@@ -11,4 +11,5 @@ dp = Dispatcher(bot, storage=storage)
 logging.basicConfig(
     level=logging.INFO,
     format=u'%(filename)s [LINE:%(lineno)d] #%(levelname)-8s [%(asctime)s]  %(message)s',
+    datefmt='%d-%b-%y %H:%M:%S',
     )
