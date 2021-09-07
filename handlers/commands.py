@@ -20,9 +20,7 @@ async def welcome_message(message: types.Message):
     except FileExistsError:
         pass
     else:
-        logging.info(
-            f"Directories for user '{message.from_user.first_name}' created"
-            )
+        logging.info("Directories for new user created")
 
     await message.reply(
         "Hello, I'm Vivy.\nMy mission is to make people happy by "
@@ -93,7 +91,7 @@ async def cancel_merging(message: types.Message, state: FSMContext):
     if files:
         for file in files:
             unlink(f"{path}/input_pdfs/{message.chat.id}/{file}")
-            logging.info(f"Deleted {file}")
+            logging.info(f"Deleted input PDF")
 
     await message.reply("Merging cancelled.")
 
@@ -162,7 +160,7 @@ async def name_file(message: types.Message, state: FSMContext):
 
     files = sorted(listdir(f"{path}/input_pdfs/{message.chat.id}"))
 
-    logging.info(f"Files in the /input_pdfs/{message.chat.id} directory: {files}")
+    logging.info("Merging started")
 
     merger = PdfFileMerger(strict=False)
 
@@ -184,10 +182,10 @@ async def name_file(message: types.Message, state: FSMContext):
 
     for file in files:
         unlink(f"{path}/input_pdfs/{message.chat.id}/{file}")
-        logging.info(f"Deleted the file {file}")
+        logging.info(f"Deleted input PDF")
 
     unlink(f"{path}/output_pdfs/{message.chat.id}/{merged_pdf_name}")
-    logging.info(f"Deleted the file {merged_pdf_name}")
+    logging.info(f"Deleted output PDF")
 
 
 @dp.message_handler(state=None)
