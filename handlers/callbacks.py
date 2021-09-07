@@ -1,5 +1,6 @@
 from states.files_state import FilesState
 from aiogram import types
+from aiogram.dispatcher import FSMContext
 
 from loader import dp, bot
 from loader import path
@@ -35,15 +36,15 @@ async def modification_options(call: types.CallbackQuery):
     buttons = [
         types.InlineKeyboardButton(
             text="No, I want to rearrange the order of the files",
-            callback_data="rearrange"
+            callback_data="move_file"
             ),
         types.InlineKeyboardButton(
-            text="No, I want to delete some file(s)",
-            callback_data="delete_files"
+            text="No, I want to delete a file",
+            callback_data="delete_file"
             ),
         types.InlineKeyboardButton(
-            text="No, I want to add another file(s)",
-            callback_data="add_files"
+            text="No, I want to add another file",
+            callback_data="add"
         ),
         types.InlineKeyboardButton(
             text="No, I changed my mind. I want to cancel merging.",
@@ -62,12 +63,20 @@ async def modification_options(call: types.CallbackQuery):
     await call.answer()
 
 
-@dp.callback_query_handler(text="rearrange")
+@dp.callback_query_handler(text_endswith="_file")
 async def choose_file(call: types.CallbackQuery):
     """
-    This handler will be called when user indicates that they want to
-    rearrange the order of the files.
+    This handler will be called when user indicates that they want to either:
+    1. Rearrange the order of the files
+    2. Delete a file from the list of files
+
+    Asks the user to choose a file that they want to modify.
     """
+    action = call.data.split("_")[0]
+
+    # this will be used to specify the callback_data for the buttons
+    prefix = "mv_" if action == "move" else "rm_"
+
     files = sorted(listdir(f"{path}/input_pdfs/{call.message.chat.id}"))
 
     keyboard = types.InlineKeyboardMarkup()
@@ -75,11 +84,11 @@ async def choose_file(call: types.CallbackQuery):
     for file in files:
         keyboard.add(types.InlineKeyboardButton(
             text=file[3:],
-            callback_data="file_" + file
+            callback_data=prefix + file
         ))
 
     await call.message.edit_text(
-        "<b><u>Choose the file that you want to move</u></b>\n\n" + 
+        f"<b><u>Choose the file that you want to {action}</u></b>\n\n" + 
         call.message.text[call.message.text.index("1."):],
         reply_markup=keyboard,
     )
@@ -87,7 +96,7 @@ async def choose_file(call: types.CallbackQuery):
     await call.answer()
 
 
-@dp.callback_query_handler(text_startswith="file_")
+@dp.callback_query_handler(text_startswith="mv_")
 async def choose_position(call: types.CallbackQuery):
     """
     This handler will be called once the user chooses the file to move.
@@ -107,7 +116,7 @@ async def choose_position(call: types.CallbackQuery):
 
     keyboard.add(*buttons)
 
-    file_name = call.data[5:]
+    file_name = call.data[3:]
 
     rename(
         f"{path}/input_pdfs/{call.message.chat.id}/{file_name}",
@@ -195,5 +204,144 @@ async def rearrange(call: types.CallbackQuery):
         f"<b><u>Are these the files that you want to merge?</u></b>\n\n{file_list}",
         reply_markup=keyboard,
         )
+
+    await call.answer()
+
+
+@dp.callback_query_handler(text_startswith="rm_")
+async def delete_file(call: types.CallbackQuery):
+    """
+    This handler will be called once user chooses the file they want to delete.
+    """
+    files = sorted(listdir(f"{path}/input_pdfs/{call.message.chat.id}"))
+
+    if len(files) == 1:
+        await call.message.answer(
+            "Can't let you do that. There will be nothing left for me to work with."
+            )
+    else:
+        file_name = call.data[3:]
+
+        unlink(f"{path}/input_pdfs/{call.message.chat.id}/{file_name}")
+        logging.info("Removed a specific PDF")
+
+        del_file_num = int(file_name[:2])
+
+        if del_file_num < len(files):
+            for file in files[del_file_num:]:
+                file_num = int(file[:2]) - 1
+
+                file_num = f"0{file_num}" if file_num < 10 else str(file_num)
+                rename(
+                    f"{path}/input_pdfs/{call.message.chat.id}/{file}",
+                    f"{path}/input_pdfs/{call.message.chat.id}/{file_num}{file[2:]}"
+                )
+
+    files = sorted(listdir(f"{path}/input_pdfs/{call.message.chat.id}"))
+
+    file_list = [f"{index}. {value[3:]}" for index, value in enumerate(files, start=1)]
+    file_list = "\n".join(file_list)
+
+    keyboard = types.InlineKeyboardMarkup()
+    buttons = [
+        types.InlineKeyboardButton(text="Yes", callback_data="ask_for_name"),
+        types.InlineKeyboardButton(text="No", callback_data="modify_files"),
+    ]
+    keyboard.add(*buttons)
+
+    await call.message.edit_text(
+        f"<b><u>Are these the files that you want to merge?</u></b>\n\n{file_list}",
+        reply_markup=keyboard,
+        )
+
+    await call.answer()
+
+
+@dp.callback_query_handler(text="add")
+async def ask_position(call: types.CallbackQuery):
+    """
+    This handler will be called when user indicates that they want to
+    add a file.
+    Asks the user where they want to add the new file.
+    """
+
+    files_num = len(listdir(f"{path}/input_pdfs/{call.message.chat.id}"))
+
+    keyboard = types.InlineKeyboardMarkup()
+
+    buttons = []
+
+    for i in range(1, files_num+2):
+        buttons.append(
+            types.InlineKeyboardButton(
+                text=str(i), callback_data=f"loc_{i}",
+            )
+        )
+
+    keyboard.add(*buttons)
+
+    await call.message.edit_text(
+        "<b><u>Choose where you want to add the new file</u></b>\n\n" +
+        call.message.text[call.message.text.index("1."):],
+        reply_markup=keyboard,
+    )
+
+    await call.answer()
+
+
+@dp.callback_query_handler(text_startswith="loc_")
+async def prepare_for_addition(call: types.CallbackQuery, state: FSMContext):
+    """
+    This handler will be called when user indicates where they want to
+    add the new file.
+    """
+    await FilesState.waiting_for_specific_file.set()
+
+    location = int(call.data[4:])
+
+    files = sorted(listdir(f"{path}/input_pdfs/{call.message.chat.id}"))
+
+    if location <= len(files):
+        for file in files[location-1:]:
+            file_num = int(file[:2]) + 1
+
+            file_num = f"0{file_num}" if file_num < 10 else str(file_num)
+            rename(
+                f"{path}/input_pdfs/{call.message.chat.id}/{file}",
+                f"{path}/input_pdfs/{call.message.chat.id}/{file_num}{file[2:]}"
+            )
+
+    await state.update_data(num=location)
+
+    await call.message.edit_text(
+        "<b>Alright, just send me the file and I'll add it there.</b>",
+        reply_markup="",
+    )
+
+    await call.answer()
+
+
+@dp.callback_query_handler(text="no_cancel")
+async def just_cancel(call: types.CallbackQuery):
+    """
+    This handler will be called when user aborts merging
+    from the inline keyboard.
+    """
+    logging.info("Cancelling merging")
+
+    await bot.edit_message_reply_markup(
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup="",
+        )
+
+    files = listdir(f'{path}/input_pdfs/{call.message.chat.id}/')
+
+    if files:
+        for file in files:
+            unlink(f"{path}/input_pdfs/{call.message.chat.id}/{file}")
+            logging.info(f"Deleted input PDF")
+
+    await call.message.answer("Merging cancelled.")
 
     await call.answer()
