@@ -96,7 +96,7 @@ async def cancel_merging(message: types.Message, state: FSMContext):
     await message.reply("Merging cancelled.")
 
 
-@dp.message_handler(is_media_group=True, content_types=types.ContentType.DOCUMENT, state="*")
+@dp.message_handler(is_media_group=True, content_types=types.ContentType.DOCUMENT, state=None)
 async def handle_albums(message: types.Message, album: List[types.Message]):
     """This handler will receive a complete album of any type."""
     await message.answer("Downloading files, please wait")
@@ -119,12 +119,12 @@ async def handle_albums(message: types.Message, album: List[types.Message]):
         logging.info("File downloaded.")
 
     await message.answer(
-        "Great, if you have any more PDF files u want to merge, "
+        "Great, if you have any more PDF files you want to merge, "
         "send them now. Once you are done, send /done"
     )
 
 
-@dp.message_handler(content_types=types.message.ContentType.DOCUMENT, state="*")
+@dp.message_handler(content_types=types.message.ContentType.DOCUMENT, state=None)
 async def file_received(message: types.Message):
     """
     This handler will be called when user sends a file of type `Document`
@@ -145,9 +145,45 @@ async def file_received(message: types.Message):
         logging.info("File downloaded")
  
         await message.reply(
-            "Great, if you have any more PDF files u want to merge, "
+            "Great, if you have any more PDF files you want to merge, "
             "send them now. Once you are done, send /done"
             )
+    else:
+        await message.reply(
+            "That's not a PDF file.",
+            )
+
+
+@dp.message_handler(
+    is_media_group=False,
+    content_types=types.message.ContentType.DOCUMENT,
+    state=FilesState.waiting_for_specific_file
+    )
+async def specific_file_received(message: types.Message, state: FSMContext):
+    """
+    This handler will be called when user sends a file of type `Document`
+    that has to be added to a certain position in the list of files.
+    """
+    name = message.document.file_name
+    if name.endswith(".pdf"):
+        file_count = await state.get_data()
+        print(file_count)
+        file_count = file_count["num"]
+
+        if file_count < 10:
+            file_count = "0" + str(file_count)
+
+        await message.answer("Downloading the file, please wait")
+
+        await bot.download_file_by_id(
+            message.document.file_id,
+            destination=f"{path}/input_pdfs/{message.chat.id}/{file_count}_{name}",
+            )
+        logging.info("File downloaded")
+
+        await state.finish()
+ 
+        await get_confirmation(message)
     else:
         await message.reply(
             "That's not a PDF file.",
@@ -186,6 +222,18 @@ async def name_file(message: types.Message, state: FSMContext):
 
     unlink(f"{path}/output_pdfs/{message.chat.id}/{merged_pdf_name}")
     logging.info(f"Deleted output PDF")
+
+
+@dp.message_handler(
+    is_media_group=True,
+    content_types=types.message.ContentType.DOCUMENT,
+    state=FilesState.waiting_for_specific_file
+    )
+async def inform_limitations(message: types.Message):
+    await message.reply(
+        "I cannot add multiple files at the same time.\n"
+        "Please send a single file."
+        )
 
 
 @dp.message_handler(state=None)
