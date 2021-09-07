@@ -7,7 +7,6 @@ from aiogram import types
 import asyncio
 from typing import Union
 
-# for dealing with files sent as an album
 from aiogram.dispatcher.handler import CancelHandler
 from aiogram.dispatcher.middlewares import BaseMiddleware
 
