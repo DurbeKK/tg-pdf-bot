@@ -166,8 +166,9 @@ async def specific_file_received(message: types.Message, state: FSMContext):
     """
     name = message.document.file_name
     if name.endswith(".pdf"):
+        logging.info("Adding a file")
+
         file_count = await state.get_data()
-        print(file_count)
         file_count = file_count["num"]
 
         if file_count < 10:

@@ -137,6 +137,8 @@ async def rearrange(call: types.CallbackQuery):
     """
     This handler will be called once the user chooses the position to move the file.
     """
+    logging.info("Rearranging in progress")
+
     files = sorted(listdir(f"{path}/input_pdfs/{call.message.chat.id}"))
 
     for file in files:
