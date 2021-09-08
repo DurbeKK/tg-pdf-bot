@@ -3,11 +3,23 @@ from aiogram import types
 from aiogram.dispatcher import FSMContext
 from loader import dp, path, bot
 
-from states.files_state import FilesState
+from states.all_states import MergingStates, CompressingStates
 
 from typing import List
 import logging
-from os import mkdir, listdir, unlink
+from os import mkdir, listdir, unlink, rename
+from os.path import getsize
+import subprocess
+
+def convert_bytes(num):
+    """
+    This function will convert bytes to KB, MB.
+    """
+    for x in ['bytes', 'KB', 'MB']:
+        if num < 1024.0:
+            return f"{num:3.1f} {x}"
+        num /= 1024.0
+
 
 @dp.message_handler(commands="start", state="*")
 async def welcome_message(message: types.Message):
@@ -46,12 +58,134 @@ async def give_help(message: types.Message):
     )
 
 
-@dp.message_handler(commands="done")
-async def get_confirmation(message: types.Message):
+@dp.message_handler(commands="compress")
+async def start_compressing(message: types.Message):
+    """
+    This handler will be called when user indicates that they want to
+    compress files.
+    This will basically just ask the user to start sending the PDF files.
+    """
+    await CompressingStates.waiting_for_files_to_compress.set()
+
+    await message.reply(
+        "Cool, send me the PDF that you want compressed and I'll start "
+        "working on it right away."
+        )
+
+
+@dp.message_handler(
+    is_media_group=False,
+    content_types=types.message.ContentType.DOCUMENT,
+    state=CompressingStates.waiting_for_files_to_compress,
+    )
+async def file_received(message: types.Message, state: FSMContext):
+    """
+    This handler will be called when user sends a file of type `Document`
+    (Compressing)
+    """
+    name = message.document.file_name
+    if name.endswith(".pdf"):
+        await CompressingStates.next()
+
+        await message.answer("Downloading the file, please wait")
+
+        await bot.download_file_by_id(
+            message.document.file_id,
+            destination=f"{path}/input_pdfs/{message.chat.id}/{name}",
+            timeout=90,
+            )
+        logging.info("File (to be compressed) downloaded")
+ 
+        await message.reply(
+            "What should the compressed file be called?"
+            )
+    else:
+        await message.reply(
+            "That's not a PDF file.",
+            )
+
+
+@dp.message_handler(state=CompressingStates.waiting_for_a_name)
+async def compress_files(message: types.Message, state: FSMContext):
+    """
+    This handler will be called when user sends a name for 
+    the compressed file.
+    Compresses the file and sends it back to the user.
+    """
+    await state.finish()
+
+    files = listdir(f"{path}/input_pdfs/{message.chat.id}")
+    
+    if " " in files[0]:
+        new_name = files[0].replace(" ", "_")
+        rename(
+            f"{path}/input_pdfs/{message.chat.id}/{files[0]}",
+            f"{path}/input_pdfs/{message.chat.id}/{new_name}"
+        )
+        file = f"{path}/input_pdfs/{message.chat.id}/{new_name}"
+    else:
+        file = f"{path}/input_pdfs/{message.chat.id}/{files[0]}"
+
+    logging.info("Compressing started")
+
+    await message.answer("Compressing the file, please wait")
+
+    if message.text[-4:].lower() == ".pdf":
+        compressed_pdf = f"{path}/output_pdfs/{message.chat.id}/{message.text}"
+    else:
+        compressed_pdf = f"{path}/output_pdfs/{message.chat.id}/{message.text}.pdf"
+
+    script = (
+        "gs -sDEVICE=pdfwrite -dNOPAUSE -dQUIET -dBATCH -dPDFSETTINGS=/screen"
+        f" -dCompatibilityLevel=1.4 -sOutputFile={compressed_pdf} {file}"
+    )
+    command = script.split(" ")
+
+    subprocess.run(command)
+
+    original_size = convert_bytes(getsize(file))
+    compressed_size = convert_bytes(getsize(compressed_pdf))
+    reduction = round((1 - (getsize(compressed_pdf) / getsize(file))) * 100)
+    
+
+    await message.answer(
+        f"Original file size: {original_size}\n"
+        f"Compressed file size: {compressed_size}\n\n"
+        f"PDF size reduced by: {reduction}%"
+        )
+
+    with open(compressed_pdf, "rb") as result:
+        await message.answer_chat_action(action="upload_document")
+        await message.reply_document(result, caption="Here you go")
+        logging.info("Sent the compressed document")
+
+    unlink(file)
+    logging.info(f"Deleted input PDF (to be compressed)")
+
+    unlink(compressed_pdf)
+    logging.info(f"Deleted output PDF (compressed)")
+
+
+@dp.message_handler(commands="merge")
+async def start_merging(message: types.Message):
+    """
+    This handler will be called when user indicates that they want to 
+    merge files.
+    This will basically just ask the user to start sending the PDF files.
+    """
+    await MergingStates.waiting_for_files_to_merge.set()
+
+    await message.reply("Alright, just send the me the files that you want merged.")
+
+
+@dp.message_handler(commands="done", state=MergingStates.waiting_for_files_to_merge)
+async def get_confirmation(message: types.Message, state: FSMContext):
     """
     This handler will be called when user sends `/done` command.
     Gets confirmation on the files that need to be merged.
     """
+    await state.finish()
+
     files = sorted(listdir(f"{path}/input_pdfs/{message.chat.id}"))
 
     if not files:
@@ -96,9 +230,13 @@ async def cancel_merging(message: types.Message, state: FSMContext):
     await message.reply("Merging cancelled.")
 
 
-@dp.message_handler(is_media_group=True, content_types=types.ContentType.DOCUMENT, state=None)
+@dp.message_handler(
+    is_media_group=True,
+    content_types=types.ContentType.DOCUMENT,
+    state=MergingStates.waiting_for_files_to_merge
+    )
 async def handle_albums(message: types.Message, album: List[types.Message]):
-    """This handler will receive a complete album of any type."""
+    """This handler will receive a complete album of any type. (Merging)"""
     await message.answer("Downloading files, please wait")
 
     for obj in album:
@@ -124,10 +262,14 @@ async def handle_albums(message: types.Message, album: List[types.Message]):
     )
 
 
-@dp.message_handler(content_types=types.message.ContentType.DOCUMENT, state=None)
+@dp.message_handler(
+    content_types=types.message.ContentType.DOCUMENT,
+    state=MergingStates.waiting_for_files_to_merge
+    )
 async def file_received(message: types.Message):
     """
     This handler will be called when user sends a file of type `Document`
+    (Merging)
     """
     name = message.document.file_name
     if name.endswith(".pdf"):
@@ -157,12 +299,13 @@ async def file_received(message: types.Message):
 @dp.message_handler(
     is_media_group=False,
     content_types=types.message.ContentType.DOCUMENT,
-    state=FilesState.waiting_for_specific_file
+    state=MergingStates.waiting_for_specific_file
     )
 async def specific_file_received(message: types.Message, state: FSMContext):
     """
     This handler will be called when user sends a file of type `Document`
     that has to be added to a certain position in the list of files.
+    (Merging)
     """
     name = message.document.file_name
     if name.endswith(".pdf"):
@@ -191,8 +334,8 @@ async def specific_file_received(message: types.Message, state: FSMContext):
             )
 
 
-@dp.message_handler(state=FilesState.waiting_for_a_name)
-async def name_file(message: types.Message, state: FSMContext):
+@dp.message_handler(state=MergingStates.waiting_for_a_name)
+async def merge_files(message: types.Message, state: FSMContext):
     await state.finish()
 
     files = sorted(listdir(f"{path}/input_pdfs/{message.chat.id}"))
@@ -228,7 +371,7 @@ async def name_file(message: types.Message, state: FSMContext):
 @dp.message_handler(
     is_media_group=True,
     content_types=types.message.ContentType.DOCUMENT,
-    state=FilesState.waiting_for_specific_file
+    state=MergingStates.waiting_for_specific_file
     )
 async def inform_limitations(message: types.Message):
     await message.reply(

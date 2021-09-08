@@ -1,4 +1,4 @@
-from states.files_state import FilesState
+from states.all_states import MergingStates
 from aiogram import types
 from aiogram.dispatcher import FSMContext
 
@@ -13,7 +13,7 @@ async def ask_for_name(call: types.CallbackQuery):
     """
     This handler will ask the user to provide a name for the output file.
     """
-    await FilesState.waiting_for_a_name.set()
+    await MergingStates.waiting_for_a_name.set()
 
     await bot.edit_message_reply_markup(
         call.message.chat.id,
@@ -297,7 +297,7 @@ async def prepare_for_addition(call: types.CallbackQuery, state: FSMContext):
     This handler will be called when user indicates where they want to
     add the new file.
     """
-    await FilesState.waiting_for_specific_file.set()
+    await MergingStates.waiting_for_specific_file.set()
 
     location = int(call.data[4:])
 
