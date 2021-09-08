@@ -36,8 +36,12 @@ async def welcome_message(message: types.Message):
 
     await message.reply(
         "Hello, I'm Vivy.\nMy mission is to make people happy by "
-        "merging their PDF files into one.\n"
-        "Type /help for more information."
+        "helping them perform basic operations on their PDF files.\n\n"
+        "<b>What I can do</b>\n"
+        "<i>/merge</i> - Merge mutltiple PDF files into one PDF file.\n"
+        "<i>/compress</i> - Compress a PDF file (can only compress one "
+        "file at a time).\n\n"
+        "Type <b>/help</b> for more information."
     )
 
 
@@ -47,14 +51,15 @@ async def give_help(message: types.Message):
     This handler will be called when user sends '/help' command
     """
     await message.reply(
-        "<b>Instructions:</b>\n\nTo merge your PDF files, send them to me "
-        "and send <i>/done</i>\nThat's it.\n\n<b>Available commands:</b>\n\n"
+        "<b>Instructions:</b>\nGo to the special commands <b>☰ Menu</b> "
+        "and choose the operation that you want me to perform.\n\n"
+        "<b>Available commands:</b>\n"
         "<i>/start</i> - Brief info about the bot.\n"
-        "<i>/done</i> - I will start my mission and send you the merged file "
-        "when it's ready. <u>Send this command only once you have sent all "
-        "the PDFs you want to merge.</u>\n"
-        "<i>/cancel</i> - This will cancel merging files that you sent.\n"
         "<i>/help</i> - Help on how to use the bot.\n"
+        "<i>/merge</i> - Merge mutltiple PDF files into one PDF file.\n"
+        "<i>/compress</i> - Compress a PDF file (can only compress one "
+        "file at a time).\n"
+        "<i>/cancel</i> - This will cancel the current operation.\n"
     )
 
 
@@ -149,9 +154,9 @@ async def compress_files(message: types.Message, state: FSMContext):
     
 
     await message.answer(
-        f"Original file size: {original_size}\n"
-        f"Compressed file size: {compressed_size}\n\n"
-        f"PDF size reduced by: {reduction}%"
+        f"Original file size: <b>{original_size}</b>\n"
+        f"Compressed file size: <b>{compressed_size}</b>\n\n"
+        f"PDF size reduced by: <b>{reduction}%</b>"
         )
 
     with open(compressed_pdf, "rb") as result:
@@ -214,20 +219,26 @@ async def get_confirmation(message: types.Message, state: FSMContext):
 @dp.message_handler(commands="cancel", state="*")
 async def cancel_merging(message: types.Message, state: FSMContext):
     """
-    This handler will be called when user sends `/cancel` command
+    This handler will be called when user sends `/cancel` command.
+    Resets the state and deletes all the PDF files.
     """
-    logging.info("Cancelling merging")
+    logging.info("Cancelling operation")
 
     await state.finish()
 
     files = listdir(f'{path}/input_pdfs/{message.chat.id}')
 
-    if files:
-        for file in files:
-            unlink(f"{path}/input_pdfs/{message.chat.id}/{file}")
-            logging.info(f"Deleted input PDF")
+    for file in files:
+        unlink(f"{path}/input_pdfs/{message.chat.id}/{file}")
+        logging.info(f"Deleted input PDF")
 
-    await message.reply("Merging cancelled.")
+    output_files = listdir(f'{path}/output_pdfs/{message.chat.id}')
+
+    for file in output_files:
+        unlink(f"{path}/output_pdfs/{message.chat.id}/{file}")
+        logging.info(f"Deleted output PDF")
+
+    await message.reply("Operation cancelled")
 
 
 @dp.message_handler(
