@@ -38,7 +38,7 @@ async def welcome_message(message: types.Message):
         "Hello, I'm Vivy.\nMy mission is to make people happy by "
         "helping them perform basic operations on their PDF files.\n\n"
         "<b>What I can do</b>\n"
-        "<i>/merge</i> - Merge mutltiple PDF files into one PDF file.\n"
+        "<i>/merge</i> - Merge multiple PDF files into one PDF file.\n"
         "<i>/compress</i> - Compress a PDF file (can only compress one "
         "file at a time).\n\n"
         "Type <b>/help</b> for more information."
@@ -56,7 +56,7 @@ async def give_help(message: types.Message):
         "<b>Available commands:</b>\n"
         "<i>/start</i> - Brief info about the bot.\n"
         "<i>/help</i> - Help on how to use the bot.\n"
-        "<i>/merge</i> - Merge mutltiple PDF files into one PDF file.\n"
+        "<i>/merge</i> - Merge multiple PDF files into one PDF file.\n"
         "<i>/compress</i> - Compress a PDF file (can only compress one "
         "file at a time).\n"
         "<i>/cancel</i> - This will cancel the current operation.\n"
@@ -83,15 +83,13 @@ async def start_compressing(message: types.Message):
     content_types=types.message.ContentType.DOCUMENT,
     state=CompressingStates.waiting_for_files_to_compress,
     )
-async def file_received(message: types.Message, state: FSMContext):
+async def file_received(message: types.Message):
     """
     This handler will be called when user sends a file of type `Document`
     (Compressing)
     """
     name = message.document.file_name
     if name.endswith(".pdf"):
-        await CompressingStates.next()
-
         await message.answer("Downloading the file, please wait")
 
         await bot.download_file_by_id(
@@ -101,9 +99,21 @@ async def file_received(message: types.Message, state: FSMContext):
             )
         logging.info("File (to be compressed) downloaded")
  
-        await message.reply(
-            "What should the compressed file be called?"
+        keyboard = types.InlineKeyboardMarkup()
+
+        keyboard.add(
+            types.InlineKeyboardButton(
+                text="or use the original file name",
+                callback_data="Compressed_" + name
             )
+        )
+
+        await message.reply(
+            "<b>What should the compressed file be called?</b>",
+            reply_markup=keyboard,
+            )
+
+        await CompressingStates.next()
     else:
         await message.reply(
             "That's not a PDF file.",
@@ -111,12 +121,23 @@ async def file_received(message: types.Message, state: FSMContext):
 
 
 @dp.message_handler(state=CompressingStates.waiting_for_a_name)
-async def compress_files(message: types.Message, state: FSMContext):
+async def compress_file(message: types.Message, state: FSMContext):
     """
     This handler will be called when user sends a name for 
     the compressed file.
     Compresses the file and sends it back to the user.
     """
+    # if the user chooses the 'use the original file name' option,
+    # the default name will be stored in the state
+    data = await state.get_data()
+
+    if data.get("name"):
+        output_name = data.get("name")
+    else:
+        # this else block will initiate if the user has typed out a file name
+        # (didn't choose the default file name option)
+        output_name = message.text
+
     await state.finish()
 
     files = listdir(f"{path}/input_pdfs/{message.chat.id}")
@@ -135,10 +156,15 @@ async def compress_files(message: types.Message, state: FSMContext):
 
     await message.answer("Compressing the file, please wait")
 
-    if message.text[-4:].lower() == ".pdf":
-        compressed_pdf = f"{path}/output_pdfs/{message.chat.id}/{message.text}"
+    if " " in output_name:
+        compressed_name = output_name.replace(" ", "_")
     else:
-        compressed_pdf = f"{path}/output_pdfs/{message.chat.id}/{message.text}.pdf"
+        compressed_name = output_name
+
+    if message.text[-4:].lower() == ".pdf":
+        compressed_pdf = f"{path}/output_pdfs/{message.chat.id}/{compressed_name}"
+    else:
+        compressed_pdf = f"{path}/output_pdfs/{message.chat.id}/{compressed_name}.pdf"
 
     script = (
         "gs -sDEVICE=pdfwrite -dNOPAUSE -dQUIET -dBATCH -dPDFSETTINGS=/screen"
@@ -151,7 +177,6 @@ async def compress_files(message: types.Message, state: FSMContext):
     original_size = convert_bytes(getsize(file))
     compressed_size = convert_bytes(getsize(compressed_pdf))
     reduction = round((1 - (getsize(compressed_pdf) / getsize(file))) * 100)
-    
 
     await message.answer(
         f"Original file size: <b>{original_size}</b>\n"
@@ -358,10 +383,11 @@ async def merge_files(message: types.Message, state: FSMContext):
     for file in files:
         merger.append(f"{path}/input_pdfs/{message.chat.id}/{file}")
 
-    if message.text[-4:].lower() == ".pdf":
-        merged_pdf_name = message.text
-    else:
-        merged_pdf_name = message.text + ".pdf"
+    if " " in message.text:
+        merged_pdf_name = message.text.replace(" ", "_")
+
+    if message.text[-4:].lower() != ".pdf":
+        merged_pdf_name = merged_pdf_name + ".pdf"
 
     merger.write(f"{path}/output_pdfs/{message.chat.id}/{merged_pdf_name}")
     merger.close()

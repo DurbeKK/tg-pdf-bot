@@ -1,4 +1,4 @@
-from states.all_states import MergingStates
+from states.all_states import MergingStates, CompressingStates
 from aiogram import types
 from aiogram.dispatcher import FSMContext
 
@@ -7,6 +7,32 @@ from loader import path
 
 import logging
 from os import listdir, rename, unlink
+from handlers.commands import compress_file
+
+
+@dp.callback_query_handler(
+    text_startswith="compressed_",
+    state=CompressingStates.waiting_for_a_name
+    )
+async def give_default_name(call: types.CallbackQuery, state: FSMContext):
+    """
+    This handler will be called when user doesn't want to type in a
+    name for the compressed file and wants to use the default name.
+    """
+    await bot.edit_message_reply_markup(
+        call.message.chat.id,
+        call.message.message_id,
+        reply_markup="",
+    )
+
+    # storing the default name in the state
+    await state.update_data(name=call.data)
+
+    await call.answer()
+
+    # calling the compress file function
+    await compress_file(message=call.message, state=state)
+
 
 @dp.callback_query_handler(text="ask_for_name")
 async def ask_for_name(call: types.CallbackQuery):
