@@ -11,7 +11,7 @@ from handlers.commands import compress_file
 
 
 @dp.callback_query_handler(
-    text_startswith="compressed_",
+    text_startswith="Compressed_",
     state=CompressingStates.waiting_for_a_name
     )
 async def give_default_name(call: types.CallbackQuery, state: FSMContext):

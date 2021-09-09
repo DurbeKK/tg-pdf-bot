@@ -63,13 +63,36 @@ async def give_help(message: types.Message):
     )
 
 
-@dp.message_handler(commands="compress")
-async def start_compressing(message: types.Message):
+async def reset(message: types.Message, state: FSMContext):
+    """
+    Resets that state and deletes all the files.
+    """
+    logging.info("Resetting the state and deleting all the files")
+
+    await state.finish()
+
+    files = listdir(f'{path}/input_pdfs/{message.chat.id}')
+
+    for file in files:
+        unlink(f"{path}/input_pdfs/{message.chat.id}/{file}")
+        logging.info(f"Deleted input PDF")
+
+    output_files = listdir(f'{path}/output_pdfs/{message.chat.id}')
+
+    for file in output_files:
+        unlink(f"{path}/output_pdfs/{message.chat.id}/{file}")
+        logging.info(f"Deleted output PDF")
+
+
+@dp.message_handler(commands="compress", state="*")
+async def start_compressing(message: types.Message, state: FSMContext):
     """
     This handler will be called when user indicates that they want to
     compress files.
     This will basically just ask the user to start sending the PDF files.
     """
+    await reset(message, state)
+
     await CompressingStates.waiting_for_files_to_compress.set()
 
     await message.reply(
@@ -141,16 +164,13 @@ async def compress_file(message: types.Message, state: FSMContext):
     await state.finish()
 
     files = listdir(f"{path}/input_pdfs/{message.chat.id}")
-    
-    if " " in files[0]:
-        new_name = files[0].replace(" ", "_")
-        rename(
-            f"{path}/input_pdfs/{message.chat.id}/{files[0]}",
-            f"{path}/input_pdfs/{message.chat.id}/{new_name}"
-        )
-        file = f"{path}/input_pdfs/{message.chat.id}/{new_name}"
-    else:
-        file = f"{path}/input_pdfs/{message.chat.id}/{files[0]}"
+
+    new_name = files[0].replace(" ", "_")
+    rename(
+        f"{path}/input_pdfs/{message.chat.id}/{files[0]}",
+        f"{path}/input_pdfs/{message.chat.id}/{new_name}"
+    )
+    file = f"{path}/input_pdfs/{message.chat.id}/{new_name}"
 
     logging.info("Compressing started")
 
@@ -196,13 +216,15 @@ async def compress_file(message: types.Message, state: FSMContext):
     logging.info(f"Deleted output PDF (compressed)")
 
 
-@dp.message_handler(commands="merge")
-async def start_merging(message: types.Message):
+@dp.message_handler(commands="merge", state="*")
+async def start_merging(message: types.Message, state: FSMContext):
     """
     This handler will be called when user indicates that they want to 
     merge files.
     This will basically just ask the user to start sending the PDF files.
     """
+    await reset(message, state)
+
     await MergingStates.waiting_for_files_to_merge.set()
 
     await message.reply("Alright, just send the me the files that you want merged.")
@@ -242,26 +264,14 @@ async def get_confirmation(message: types.Message, state: FSMContext):
 
 
 @dp.message_handler(commands="cancel", state="*")
-async def cancel_merging(message: types.Message, state: FSMContext):
+async def cancel(message: types.Message, state: FSMContext):
     """
     This handler will be called when user sends `/cancel` command.
     Resets the state and deletes all the PDF files.
     """
     logging.info("Cancelling operation")
 
-    await state.finish()
-
-    files = listdir(f'{path}/input_pdfs/{message.chat.id}')
-
-    for file in files:
-        unlink(f"{path}/input_pdfs/{message.chat.id}/{file}")
-        logging.info(f"Deleted input PDF")
-
-    output_files = listdir(f'{path}/output_pdfs/{message.chat.id}')
-
-    for file in output_files:
-        unlink(f"{path}/output_pdfs/{message.chat.id}/{file}")
-        logging.info(f"Deleted output PDF")
+    await reset(message, state)
 
     await message.reply("Operation cancelled")
 
@@ -374,6 +384,8 @@ async def specific_file_received(message: types.Message, state: FSMContext):
 async def merge_files(message: types.Message, state: FSMContext):
     await state.finish()
 
+    await message.answer("Working on it")
+
     files = sorted(listdir(f"{path}/input_pdfs/{message.chat.id}"))
 
     logging.info("Merging started")
@@ -383,8 +395,7 @@ async def merge_files(message: types.Message, state: FSMContext):
     for file in files:
         merger.append(f"{path}/input_pdfs/{message.chat.id}/{file}")
 
-    if " " in message.text:
-        merged_pdf_name = message.text.replace(" ", "_")
+    merged_pdf_name = message.text.replace(" ", "_")
 
     if message.text[-4:].lower() != ".pdf":
         merged_pdf_name = merged_pdf_name + ".pdf"
