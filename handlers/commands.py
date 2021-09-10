@@ -1,9 +1,9 @@
-from PyPDF2.merger import PdfFileMerger
+from PyPDF2.merger import PdfFileMerger, PdfFileReader, PdfFileWriter
 from aiogram import types
 from aiogram.dispatcher import FSMContext
 from loader import dp, path, bot
 
-from states.all_states import MergingStates, CompressingStates
+from states.all_states import MergingStates, CompressingStates, EncryptingStates
 
 from typing import List
 import logging
@@ -84,12 +84,105 @@ async def reset(message: types.Message, state: FSMContext):
         logging.info(f"Deleted output PDF")
 
 
+@dp.message_handler(commands="encrypt", state="*")
+async def start_encrypting(message: types.Message, state: FSMContext):
+    """
+    This handler will be called when user chooses the encrypt operation.
+    This will basically just ask the user to start sending the PDF file.
+    """
+    await reset(message, state)
+
+    await EncryptingStates.waiting_for_files_to_encrypt.set()
+
+    await message.reply(
+        "Okay, send the me PDF that you want to encrypt."
+    )
+
+
+@dp.message_handler(
+    is_media_group=False,
+    content_types=types.message.ContentType.DOCUMENT,
+    state=EncryptingStates.waiting_for_files_to_encrypt,
+)
+async def encrypt_file_received(message: types.Message):
+    """
+    This handler will be called when user sends a file of type `Document`
+    (Encrypting)
+    """
+    name = message.document.file_name
+    if name.endswith(".pdf"):
+        await message.answer("Downloading the file, please wait")
+
+        await bot.download_file_by_id(
+            message.document.file_id,
+            destination=f"{path}/input_pdfs/{message.chat.id}/{name}",
+            timeout=90,
+            )
+        logging.info("File (to be encrypted) downloaded")
+
+        await message.reply(
+            "<b>Great, type the password you want to encrypt with.</b>",
+            )
+
+        await EncryptingStates.next()
+    else:
+        await message.reply(
+            "That's not a PDF file.",
+            )
+
+
+@dp.message_handler(state=EncryptingStates.waiting_for_password)
+async def encrypt_file(message: types.Message, state: FSMContext):
+    """
+    This handler will be called when user types in a password for encryption.
+    Encrypts the file with that password.
+    """
+    await state.finish()
+
+    logging.info("Encrypting started")
+
+    await message.reply("Working on it, please wait")
+
+    files = listdir(f"{path}/input_pdfs/{message.chat.id}")
+
+    new_name = files[0].replace(" ", "_")
+    rename(
+        f"{path}/input_pdfs/{message.chat.id}/{files[0]}",
+        f"{path}/input_pdfs/{message.chat.id}/{new_name}"
+    )
+
+    input_file = f"{path}/input_pdfs/{message.chat.id}/{new_name}"
+    output_file = f"{path}/output_pdfs/{message.chat.id}/Encrypted_{new_name}"
+
+    file = open(input_file, "rb")
+
+    input_pdf = PdfFileReader(file)
+
+    output_pdf = PdfFileWriter()
+    output_pdf.appendPagesFromReader(input_pdf)
+    output_pdf.encrypt(message.text)
+
+    with open(output_file, "wb") as result:
+        output_pdf.write(result)
+    
+    file.close()
+
+    with open(output_file, "rb") as result:
+        await message.answer_chat_action(action="upload_document")
+        await message.reply_document(result, caption="Here you go")
+
+    unlink(input_file)
+    logging.info("Deleted input PDF (to be encrypted)")
+
+    unlink(output_file)
+    logging.info("Deleted output PDF (encrypted)")
+
+
 @dp.message_handler(commands="compress", state="*")
 async def start_compressing(message: types.Message, state: FSMContext):
     """
-    This handler will be called when user indicates that they want to
-    compress files.
-    This will basically just ask the user to start sending the PDF files.
+    This handler will be called when user chooses the compress operation.
+    This will basically just ask the user to start sending the PDF file.
     """
     await reset(message, state)
 
@@ -106,7 +199,7 @@ async def start_compressing(message: types.Message, state: FSMContext):
     content_types=types.message.ContentType.DOCUMENT,
     state=CompressingStates.waiting_for_files_to_compress,
     )
-async def file_received(message: types.Message):
+async def compress_file_received(message: types.Message):
     """
     This handler will be called when user sends a file of type `Document`
     (Compressing)
@@ -219,8 +312,7 @@ async def compress_file(message: types.Message, state: FSMContext):
 @dp.message_handler(commands="merge", state="*")
 async def start_merging(message: types.Message, state: FSMContext):
     """
-    This handler will be called when user indicates that they want to 
-    merge files.
+    This handler will be called when user chooses the merge operation
     This will basically just ask the user to start sending the PDF files.
     """
     await reset(message, state)
@@ -312,7 +404,7 @@ async def handle_albums(message: types.Message, album: List[types.Message]):
     content_types=types.message.ContentType.DOCUMENT,
     state=MergingStates.waiting_for_files_to_merge
     )
-async def file_received(message: types.Message):
+async def merge_file_received(message: types.Message):
     """
     This handler will be called when user sends a file of type `Document`
     (Merging)
@@ -419,7 +511,11 @@ async def merge_files(message: types.Message, state: FSMContext):
 @dp.message_handler(
     is_media_group=True,
     content_types=types.message.ContentType.DOCUMENT,
-    state=[MergingStates.waiting_for_specific_file, CompressingStates.waiting_for_files_to_compress]
+    state=[
+        MergingStates.waiting_for_specific_file,
+        CompressingStates.waiting_for_files_to_compress,
+        EncryptingStates.waiting_for_files_to_encrypt,
+        ]
     )
 async def inform_limitations(message: types.Message):
     await message.reply(

@@ -8,3 +8,7 @@ class MergingStates(StatesGroup):
 class CompressingStates(StatesGroup):
     waiting_for_files_to_compress = State()
     waiting_for_a_name = State()
+
+class EncryptingStates(StatesGroup):
+    waiting_for_files_to_encrypt = State()
+    waiting_for_password = State()
