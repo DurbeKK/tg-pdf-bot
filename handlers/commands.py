@@ -54,12 +54,12 @@ async def give_help(message: types.Message):
         "<b>Instructions:</b>\nGo to the special commands <b>☰ Menu</b> "
         "and choose the operation that you want me to perform.\n\n"
         "<b>Available commands:</b>\n"
-        "<i>/start</i> - Brief info about the bot.\n"
-        "<i>/help</i> - Help on how to use the bot.\n"
+        "<i>/start</i> - Brief info about me.\n"
+        "<i>/help</i> - Instructions on how to interact with me.\n"
         "<i>/merge</i> - Merge multiple PDF files into one PDF file.\n"
         "<i>/compress</i> - Compress a PDF file (can only compress one "
         "file at a time).\n"
-        "<i>/cancel</i> - This will cancel the current operation.\n"
+        "<i>/cancel</i> - Cancel the current operation.\n"
     )
 
 
@@ -373,7 +373,7 @@ async def specific_file_received(message: types.Message, state: FSMContext):
 
         await state.finish()
  
-        await get_confirmation(message)
+        await get_confirmation(message, state)
     else:
         await message.reply(
             "That's not a PDF file.",
@@ -419,15 +419,17 @@ async def merge_files(message: types.Message, state: FSMContext):
 @dp.message_handler(
     is_media_group=True,
     content_types=types.message.ContentType.DOCUMENT,
-    state=MergingStates.waiting_for_specific_file
+    state=[MergingStates.waiting_for_specific_file, CompressingStates.waiting_for_files_to_compress]
     )
 async def inform_limitations(message: types.Message):
     await message.reply(
-        "I cannot add multiple files at the same time.\n"
+        "I cannot handle multiple files at the same time.\n"
         "Please send a single file."
         )
 
 
-@dp.message_handler(state=None)
+@dp.message_handler(
+    state=None,
+    content_types=types.message.ContentType.ANY)
 async def send_instructions(message: types.Message):
-    await message.reply("Type /help to see more information.")
+    await message.reply("Please choose a command or type /help for instructions.")
