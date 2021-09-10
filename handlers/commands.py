@@ -428,6 +428,11 @@ async def inform_limitations(message: types.Message):
         )
 
 
+@dp.message_handler(regexp=("(s|S)ing"), state=None)
+async def vivy_sing(message: types.Message):
+    await message.reply("https://youtu.be/2p8ig-TrYPY")
+
+
 @dp.message_handler(
     state=None,
     content_types=types.message.ContentType.ANY)
