@@ -9,6 +9,8 @@ class CompressingStates(StatesGroup):
     waiting_for_files_to_compress = State()
     waiting_for_a_name = State()
 
-class EncryptingStates(StatesGroup):
+class CryptingStates(StatesGroup):
     waiting_for_files_to_encrypt = State()
-    waiting_for_password = State()
+    waiting_for_en_password = State()
+    waiting_for_files_to_decrypt = State()
+    waiting_for_de_password = State()
