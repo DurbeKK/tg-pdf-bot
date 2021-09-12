@@ -9,6 +9,7 @@ async def set_default_commands(dp):
             types.BotCommand("compress", "compress PDF file"),
             types.BotCommand("encrypt", "encrypt PDF file"),
             types.BotCommand("decrypt", "decrypt PDF file"),
+            types.BotCommand("split", "extract pages from your PDF"),
             types.BotCommand("cancel", "cancel current operation"),
         ]
     )

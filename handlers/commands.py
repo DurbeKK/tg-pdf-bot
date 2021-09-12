@@ -3,7 +3,7 @@ from aiogram import types
 from aiogram.dispatcher import FSMContext
 from loader import dp, path, bot
 
-from states.all_states import MergingStates, CompressingStates, CryptingStates
+from states.all_states import MergingStates, CompressingStates, CryptingStates, SplittingStates
 
 from typing import List
 import logging
@@ -43,7 +43,9 @@ async def welcome_message(message: types.Message):
         "file at a time).\n"
         "<i>/encrypt</i> - Encrypt PDF file with PDF standard encryption handler.\n" 
         "<i>/decrypt</i> - Decrypt PDF file if it was encrypted with the "
-        "PDF standard encryption handler.\n\n" 
+        "PDF standard encryption handler.\n" 
+        "<i>/split</i> - Split PDF (extract certain pages from your PDF, "
+        "saving those pages into a separate file).\n\n"
         "Type <b>/help</b> for more information."
     )
 
@@ -65,6 +67,8 @@ async def give_help(message: types.Message):
         "<i>/encrypt</i> - Encrypt PDF file with PDF standard encryption handler.\n"
         "<i>/decrypt</i> - Decrypt PDF file if it was encrypted with the "
         "PDF standard encryption handler.\n"
+        "<i>/split</i> - Split PDF (extract certain pages from your PDF, "
+        "saving those pages into a separate file).\n"
         "<i>/cancel</i> - Cancel the current operation.\n"
     )
 
@@ -160,6 +164,164 @@ async def start_decrypting(message: types.Message, state: FSMContext):
     await message.reply(
         "Okay, send the me PDF that you want me to decrypt."
     )
+
+
+@dp.message_handler(commands="split", state="*")
+async def start_extracting(message: types.Message, state: FSMContext):
+    """
+    This handler will be called when user chooses the split operation.
+    This will basically just ask the user to send the PDF file.
+    """
+    await reset(message, state)
+
+    await SplittingStates.waiting_for_files_to_split.set()
+
+    await message.reply(
+        "Sure, first send me the PDF that you want to split."
+    )
+
+
+@dp.message_handler(
+    is_media_group=False,
+    content_types=types.message.ContentType.DOCUMENT,
+    state=SplittingStates.waiting_for_files_to_split
+    )
+async def extract_file_received(message: types.Message, state: FSMContext):
+    """
+    This handler will be called when user provides a file to split.
+    """
+    name = message.document.file_name
+    if name.endswith(".pdf"):
+        await message.answer("Downloading the file, please wait")
+
+        await bot.download_file_by_id(
+            message.document.file_id,
+            destination=f"{path}/input_pdfs/{message.chat.id}/{name}",
+            timeout=90,
+            )
+        logging.info(f"File (to be extracted) downloaded")
+
+        await message.reply(
+            "Great, indicate the pages that you want your new PDF to have.\n\n"
+            "<i><b>Examples:</b></i>\n"
+            "<b>3-5</b> ➝ <i>pages 3, 4 and 5</i>\n"
+            "<b>7</b> ➝ <i>just the 7th page</i>\n"
+            "<b>3-5, 7</b> ➝ <i>pages 3, 4, 5 and 7</i>"
+            )
+
+        await SplittingStates.next()
+    else:
+        await message.reply(
+            "That's not a PDF file.",
+            )
+
+
+@dp.message_handler(state=SplittingStates.waiting_for_pages)
+async def extract_pages(message: types.Message, state: FSMContext):
+    """
+    This handler will be called when user provides the pages that they want
+    to extract. Extracts those pages from the PDF, saves it a a separate PDF
+    and sends it back to the user.
+    """
+    await state.finish()
+
+    logging.info("Extracting pages started")
+
+    await message.answer("I'm on it, please wait")
+
+    files = listdir(f"{path}/input_pdfs/{message.chat.id}")
+
+    new_name = files[0].replace(" ", "_")
+
+    rename(
+        f"{path}/input_pdfs/{message.chat.id}/{files[0]}",
+        f"{path}/input_pdfs/{message.chat.id}/{new_name}"
+    )
+
+    input_file = f"{path}/input_pdfs/{message.chat.id}/{new_name}"
+    output_file = f"{path}/output_pdfs/{message.chat.id}/Split_{new_name}"
+
+    with open(input_file, "rb") as file:
+        reader = PdfFileReader(file)
+        writer = PdfFileWriter()
+
+        page_count = reader.getNumPages()
+
+        pages = message.text.split(", ")
+        pages = [page.split("-") if "-" in page else page for page in pages]
+
+        try:
+            # converting all of the numbers to integers type
+            pages = [list(map(int, page)) if type(page) == list else int(page) for page in pages]
+        except ValueError:
+            await SplittingStates.waiting_for_pages.set()
+            await message.reply(
+                "You typed in the wrong format. Try again.\n\n"
+                "<i><b>Examples:</b></i>\n"
+                "<b>3-5</b> ➝ <i>pages 3, 4 and 5</i>\n"
+                "<b>7</b> ➝ <i>just the 7th page</i>\n"
+                "<b>3-5, 7</b> ➝ <i>pages 3, 4, 5 and 7</i>"
+                )
+            return
+        else:
+
+            for page in pages:
+                if type(page) == list:
+                    # user typed in a range
+                    start = page[0]
+                    end = page[1]
+
+                    # checking for invalid input
+                    if start > end:
+                        await SplittingStates.waiting_for_pages.set()
+                        await message.reply("Invalid pages indicated. Try again.")
+                        return
+                    elif start <= 0 or end <= 0:
+                        await SplittingStates.waiting_for_pages.set()
+                        await message.reply(
+                            "Only positive page numbers are allowed. Try again."
+                            )
+                        return
+                    elif start > page_count or end > page_count:
+                        await SplittingStates.waiting_for_pages.set()
+                        await message.reply(
+                            "Your PDF doesn't have that many pages. Try again."
+                            )
+                        return
+
+                    for i in range(start-1, end):
+                        writer.addPage(reader.getPage(i))
+                else:
+                    # user typed in a number
+
+                    # checking for invalid input
+                    if page <= 0:
+                        await SplittingStates.waiting_for_pages.set()
+                        await message.reply(
+                            "Only positive page numbers are allowed. Try again."
+                            )
+                        return
+                    elif page > page_count:
+                        await SplittingStates.waiting_for_pages.set()
+                        await message.reply(
+                            "Your PDF doesn't have that many pages. Try again."
+                            )
+                        return
+
+                    writer.addPage(reader.getPage(page-1))
+
+            with open(output_file, 'wb') as result:
+                writer.write(result)
+
+            with open(output_file, 'rb') as result:
+                await message.answer_chat_action(action="upload_document")
+                await message.reply_document(result, caption="Here you go")
+
+    unlink(input_file)
+    logging.info("Deleted input PDF (to be split)")
+
+    unlink(output_file)
+    logging.info("Deleted output PDF (split)")
 
 
 @dp.message_handler(
@@ -619,6 +781,7 @@ async def merge_files(message: types.Message, state: FSMContext):
         CompressingStates.waiting_for_files_to_compress,
         CryptingStates.waiting_for_files_to_encrypt,
         CryptingStates.waiting_for_files_to_decrypt,
+        SplittingStates.waiting_for_files_to_split,
         ]
     )
 async def inform_limitations(message: types.Message):

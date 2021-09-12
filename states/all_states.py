@@ -14,3 +14,7 @@ class CryptingStates(StatesGroup):
     waiting_for_en_password = State()
     waiting_for_files_to_decrypt = State()
     waiting_for_de_password = State()
+
+class SplittingStates(StatesGroup):
+    waiting_for_files_to_split = State()
+    waiting_for_pages = State()
