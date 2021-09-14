@@ -1,4 +1,6 @@
 from PyPDF2.merger import PdfFileMerger, PdfFileReader, PdfFileWriter
+import img2pdf
+from PIL import Image
 from aiogram import types
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text
@@ -160,7 +162,10 @@ async def start_operation(message: types.Message, state: FSMContext):
 
     await operations_dict[command]["state"].set()
 
-    await message.reply(operations_dict[command]["text"])
+    await message.reply(
+        operations_dict[command]["text"],
+        reply_markup=types.ReplyKeyboardRemove()
+        )
 
 
 @dp.message_handler(commands="convert", state="*")
@@ -183,25 +188,11 @@ async def ask_which_convert(message: types.Message, state: FSMContext):
     )
 
 
-@dp.message_handler(Text(equals="Word to PDF"))
+@dp.message_handler(Text(equals=["Word to PDF", "Image(s) to PDF"]))
 async def start_word_conversion(message: types.Message):
     """
     This handler will be called when user chooses the Word to PDF conversion.
     Asks to send a Word document.
-    """
-    await operations_dict[message.text]["state"].set()
-
-    await message.answer(
-        operations_dict[message.text]["text"],
-        reply_markup=types.ReplyKeyboardRemove()
-        )
-
-
-@dp.message_handler(Text(equals="Image(s) to PDF"))
-async def start_image_conversion(message: types.Message):
-    """
-    This handler will be called when user chooses the Image(s) to PDF conversion.
-    Asks to send images.
     """
     await operations_dict[message.text]["state"].set()
 
@@ -858,7 +849,8 @@ async def convert_word_file(message: types.Message, state: FSMContext):
 
     name = message.document.file_name
 
-    if name[-4:].lower() != ".doc" and name[-5:].lower() != ".docx" and name[-4:].lower() != ".dot":
+    # if name[-4:].lower() != ".doc" and name[-5:].lower() != ".docx" and name[-4:].lower() != ".dot":
+    if not name.endswith((".doc", ".docx", ".dot")):
         return await message.answer("I can only convert <i>.doc, .docx, .dot</i> formats.")
 
     if " " in name:
@@ -889,6 +881,169 @@ async def convert_word_file(message: types.Message, state: FSMContext):
     with open(f"{path}/output_pdfs/{message.chat.id}/{output}", "rb") as output:
         await message.answer_chat_action(action="upload_document")
         await message.reply_document(output, caption="Here you go")
+        logging.info("Sent the document")
+
+    await reset(message, state)
+
+
+@dp.message_handler(
+    is_media_group=True,
+    content_types=types.message.ContentTypes.PHOTO,
+    state=ConvertingStates.waiting_for_images
+)
+async def name_pdf_img_album(message: types.Message, album: List[types.Message]):
+    """
+    This handler will be called when user sends an album of photos to 
+    convert to PDF.
+    """
+    await message.answer("Downloading images, please wait")
+
+    for obj in album:
+        file_id = obj.photo[-1].file_id
+
+        img_count = len(listdir(f"{path}/input_pdfs/{message.chat.id}"))
+
+        await bot.download_file_by_id(
+            file_id,
+            destination=f"{path}/input_pdfs/{message.chat.id}/{img_count}.jpg",
+            )
+        logging.info("Image downloaded.")
+
+    await ConvertingStates.waiting_for_name.set()
+
+    await message.reply("What should the PDF be called?")
+
+
+@dp.message_handler(
+    is_media_group=False,
+    content_types=types.message.ContentTypes.PHOTO,
+    state=ConvertingStates.waiting_for_images
+)
+async def name_pdf_img(message: types.Message):
+    """
+    This handler will be called when user sends a photo to 
+    convert to PDF.
+    """
+    await message.answer("Downloading image, please wait")
+
+    file_id = message.photo[-1].file_id
+
+    img_count = len(listdir(f"{path}/input_pdfs/{message.chat.id}"))
+
+    await bot.download_file_by_id(
+        file_id,
+        destination=f"{path}/input_pdfs/{message.chat.id}/{img_count}.jpg",
+        )
+    logging.info("Image downloaded.")
+
+    await ConvertingStates.waiting_for_name.set()
+
+    await message.reply("What should the PDF be called?")
+
+
+@dp.message_handler(
+    is_media_group=True,
+    content_types=types.message.ContentTypes.DOCUMENT,
+    state=ConvertingStates.waiting_for_images
+)
+async def name_pdf_img_album(message: types.Message, album: List[types.Message]):
+    """
+    This handler will be called when user sends an album of photos (as files) 
+    to convert to PDF.
+    """
+    await message.answer("Downloading images, please wait")
+
+    for obj in album:
+        name = obj.document.file_name
+
+        if not name.endswith((".jpg", ".jpeg", ".png", ".gif", ".tif", ".tiff", ".eps", ".bmp")):
+            return await message.answer("Sorry, I cannot convert from this image format.")
+
+        img_count = len(listdir(f"{path}/input_pdfs/{message.chat.id}"))
+
+        await bot.download_file_by_id(
+            obj.document.file_id,
+            destination=f"{path}/input_pdfs/{message.chat.id}/{img_count}_{name}",
+            )
+        logging.info("Image downloaded.")
+
+    await ConvertingStates.waiting_for_name.set()
+
+    await message.reply("What should the PDF be called?")
+
+
+@dp.message_handler(
+    is_media_group=False,
+    content_types=types.message.ContentTypes.DOCUMENT,
+    state=ConvertingStates.waiting_for_images
+)
+async def name_pdf_img(message: types.Message):
+    """
+    This handler will be called when user sends a photo (as a file) to 
+    convert to PDF.
+    """
+    await message.answer("Downloading image, please wait")
+
+    name = message.document.file_name
+
+    if not name.endswith((".jpg", ".jpeg", ".png", ".gif", ".tif", ".tiff", ".eps", ".bmp")):
+        return await message.answer("Sorry, I cannot convert from this image format.")
+
+    img_count = len(listdir(f"{path}/input_pdfs/{message.chat.id}"))
+
+    await bot.download_file_by_id(
+        message.document.file_id,
+        destination=f"{path}/input_pdfs/{message.chat.id}/{img_count}_{name}",
+        )
+    logging.info("Image downloaded.")
+
+    await ConvertingStates.waiting_for_name.set()
+
+    await message.reply("What should the PDF be called?")
+
+
+@dp.message_handler(state=ConvertingStates.waiting_for_name)
+async def convert_images(message: types.Message, state: FSMContext):
+    """
+    This handler will be called once user provides a name for the output PDF.
+    (Converting Images)
+    """
+    await message.answer("Converting in progress, please wait")
+
+    output_name = message.text
+
+    if " " in output_name:
+        output_name = output_name.replace(" ", "_")
+
+    if message.text[-4:].lower() != ".pdf":
+        output_name = output_name + ".pdf"
+
+    output_path = f"{path}/output_pdfs/{message.chat.id}/{output_name}"
+    img_path = f"{path}/input_pdfs/{message.chat.id}"
+
+    imgs = [img_path + "/" + name for name in sorted(listdir(img_path))]
+
+    for index, img in enumerate(sorted(listdir(img_path))):
+        if img.endswith(".png"):
+            png = Image.open(f"{img_path}/{img}").convert("RGBA")
+            background = Image.new("RGBA", png.size, (255,255,255))
+
+            alpha_composite = Image.alpha_composite(background, png)
+            alpha_composite.convert("RGB").save(f"{img_path}/{index}.jpg", "JPEG", quality=80)
+
+    imgs = [img_path + "/" + name for name in sorted(listdir(img_path)) if not name.endswith(".png")]
+
+    logging.info("Converting images started")
+    
+    try:
+        with open(output_path, "wb") as result:
+            result.write(img2pdf.convert(imgs))
+    except:
+        return await message.reply("Sorry, the conversion failed.")
+
+    with open(output_path, "rb") as result:
+        await message.answer_chat_action(action="upload_document")
+        await message.reply_document(result, caption="Here you go")
         logging.info("Sent the document")
 
     await reset(message, state)

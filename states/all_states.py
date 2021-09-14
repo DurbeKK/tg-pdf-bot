@@ -21,4 +21,5 @@ class SplittingStates(StatesGroup):
 
 class ConvertingStates(StatesGroup):
     waiting_for_images = State()
+    waiting_for_name = State()
     waiting_for_word_docs = State()

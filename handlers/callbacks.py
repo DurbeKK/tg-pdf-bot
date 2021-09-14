@@ -19,11 +19,7 @@ async def give_default_name(call: types.CallbackQuery, state: FSMContext):
     This handler will be called when user doesn't want to type in a
     name for the compressed file and wants to use the default name.
     """
-    await bot.edit_message_reply_markup(
-        call.message.chat.id,
-        call.message.message_id,
-        reply_markup="",
-    )
+    await call.message.delete_reply_markup()
 
     # storing the default name in the state
     await state.update_data(name=call.data)
@@ -41,11 +37,7 @@ async def ask_for_name(call: types.CallbackQuery):
     """
     await MergingStates.waiting_for_a_name.set()
 
-    await bot.edit_message_reply_markup(
-        call.message.chat.id,
-        call.message.message_id,
-        reply_markup="",
-    )
+    await call.message.delete_reply_markup()
 
     await call.message.answer("What should the merged file be called?")
 
