@@ -1,15 +1,49 @@
 from PyPDF2.merger import PdfFileMerger, PdfFileReader, PdfFileWriter
 from aiogram import types
 from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters import Text
 from loader import dp, path, bot
 
-from states.all_states import MergingStates, CompressingStates, CryptingStates, SplittingStates
+from states.all_states import *
 
 from typing import List
 import logging
 from os import mkdir, listdir, unlink, rename
 from os.path import getsize
 import subprocess
+
+operations_dict = {
+    "merge": {
+        "state": MergingStates.waiting_for_files_to_merge,
+        "text": "Alright, just send me the files that you want merged.",
+    },
+    "compress": {
+        "state": CompressingStates.waiting_for_files_to_compress,
+        "text": "Cool, send me the PDF that you want compressed and I'll "
+        "start working on it right away.",
+    },
+    "encrypt": {
+        "state": CryptingStates.waiting_for_files_to_encrypt,
+        "text": "Okay, send me the PDF that you want to encrypt.",
+    },
+    "decrypt": {
+        "state": CryptingStates.waiting_for_files_to_decrypt,
+        "text": "Okay, send me the PDF that you want to decrypt",
+    },
+    "split": {
+        "state": SplittingStates.waiting_for_files_to_split,
+        "text": "Sure, first send me the PDF that you want to split." 
+    },
+    "Word to PDF": {
+        "state": ConvertingStates.waiting_for_word_docs,
+        "text": "Ok, send me the Word document you'd like to convert to a PDF"
+    },
+    "Image(s) to PDF": {
+        "state": ConvertingStates.waiting_for_images,
+        "text": "Ok, send me the images that you'd like to convert to a PDF"
+    }
+}
+
 
 def convert_bytes(num):
     """
@@ -46,7 +80,7 @@ async def welcome_message(message: types.Message):
         "PDF standard encryption handler.\n" 
         "<i>/split</i> - Split PDF (extract certain pages from your PDF, "
         "saving those pages into a separate file).\n\n"
-        "Type <b>/help</b> for more information."
+        "Type /help for more information."
     )
 
 
@@ -95,6 +129,7 @@ async def reset(message: types.Message, state: FSMContext):
 
 
 @dp.message_handler(commands="cancel", state="*")
+@dp.message_handler(Text(equals="cancel", ignore_case=True), state="*")
 async def cancel(message: types.Message, state: FSMContext):
     """
     This handler will be called when user sends `/cancel` command.
@@ -104,81 +139,76 @@ async def cancel(message: types.Message, state: FSMContext):
 
     await reset(message, state)
 
-    await message.reply("Operation cancelled")
-
-
-@dp.message_handler(commands="compress", state="*")
-async def start_compressing(message: types.Message, state: FSMContext):
-    """
-    This handler will be called when user chooses the compress operation.
-    This will basically just ask the user to start sending the PDF file.
-    """
-    await reset(message, state)
-
-    await CompressingStates.waiting_for_files_to_compress.set()
-
     await message.reply(
-        "Cool, send me the PDF that you want compressed and I'll start "
-        "working on it right away."
+        "Operation cancelled",
+        reply_markup=types.ReplyKeyboardRemove()
         )
 
 
-@dp.message_handler(commands="merge", state="*")
-async def start_merging(message: types.Message, state: FSMContext):
+@dp.message_handler(
+    commands=["merge", "compress", "encrypt", "decrypt", "split", "make"],
+    state="*"
+    )
+async def start_operation(message: types.Message, state: FSMContext):
     """
-    This handler will be called when user chooses the merge operation
-    This will basically just ask the user to start sending the PDF files.
-    """
-    await reset(message, state)
-
-    await MergingStates.waiting_for_files_to_merge.set()
-
-    await message.reply("Alright, just send the me the files that you want merged.")
-
-
-@dp.message_handler(commands="encrypt", state="*")
-async def start_encrypting(message: types.Message, state: FSMContext):
-    """
-    This handler will be called when user chooses the encrypt operation.
+    This handler will be called when user chooses a PDF operation.
     This will basically just ask the user to start sending the PDF file.
     """
     await reset(message, state)
 
-    await CryptingStates.waiting_for_files_to_encrypt.set()
+    command = message.get_command()[1:]
 
-    await message.reply(
-        "Okay, send the me the PDF that you want to encrypt."
-    )
+    await operations_dict[command]["state"].set()
+
+    await message.reply(operations_dict[command]["text"])
 
 
-@dp.message_handler(commands="decrypt", state="*")
-async def start_decrypting(message: types.Message, state: FSMContext):
+@dp.message_handler(commands="convert", state="*")
+async def ask_which_convert(message: types.Message, state: FSMContext):
     """
-    This handler will be called when user chooses the decrypt operation.
-    This will basically just ask the user to start sending the PDF file.
-    """
-    await reset(message, state)
-
-    await CryptingStates.waiting_for_files_to_decrypt.set()
-
-    await message.reply(
-        "Okay, send the me PDF that you want me to decrypt."
-    )
-
-
-@dp.message_handler(commands="split", state="*")
-async def start_extracting(message: types.Message, state: FSMContext):
-    """
-    This handler will be called when user chooses the split operation.
-    This will basically just ask the user to send the PDF file.
+    This handler will be called when user chooses the `convert` operation.
     """
     await reset(message, state)
 
-    await SplittingStates.waiting_for_files_to_split.set()
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    buttons = ["Word to PDF", "Image(s) to PDF"]
+    keyboard.add(*buttons)
+    keyboard.add("Cancel")
 
-    await message.reply(
-        "Sure, first send me the PDF that you want to split."
+    await message.answer(
+        "<b>Please choose one of the options for conversion.</b>\n\n"
+        "Great, currently I can only do 2 conversions:\n"
+        "<i>Word to PDF, Image(s) to PDF</i>",
+        reply_markup=keyboard
     )
+
+
+@dp.message_handler(Text(equals="Word to PDF"))
+async def start_word_conversion(message: types.Message):
+    """
+    This handler will be called when user chooses the Word to PDF conversion.
+    Asks to send a Word document.
+    """
+    await operations_dict[message.text]["state"].set()
+
+    await message.answer(
+        operations_dict[message.text]["text"],
+        reply_markup=types.ReplyKeyboardRemove()
+        )
+
+
+@dp.message_handler(Text(equals="Image(s) to PDF"))
+async def start_image_conversion(message: types.Message):
+    """
+    This handler will be called when user chooses the Image(s) to PDF conversion.
+    Asks to send images.
+    """
+    await operations_dict[message.text]["state"].set()
+
+    await message.answer(
+        operations_dict[message.text]["text"],
+        reply_markup=types.ReplyKeyboardRemove()
+        )
 
 
 @dp.message_handler(
@@ -186,13 +216,16 @@ async def start_extracting(message: types.Message, state: FSMContext):
     content_types=types.message.ContentType.DOCUMENT,
     state=SplittingStates.waiting_for_files_to_split
     )
-async def extract_file_received(message: types.Message, state: FSMContext):
+async def extract_file_received(message: types.Message):
     """
     This handler will be called when user provides a file to split.
     """
     name = message.document.file_name
     if name.endswith(".pdf"):
         await message.answer("Downloading the file, please wait")
+
+        if " " in name:
+            name = name.replace(" ", "_")
 
         await bot.download_file_by_id(
             message.document.file_id,
@@ -203,9 +236,11 @@ async def extract_file_received(message: types.Message, state: FSMContext):
 
         await message.reply(
             "Great, indicate the pages that you want your new PDF to have.\n\n"
-            "<i><b>Examples:</b></i>\n"
+            "<i><b>Examples of Usage:</b></i>\n"
             "<b>3-5</b> ➝ <i>pages 3, 4 and 5</i>\n"
-            "<b>7</b> ➝ <i>just the 7th page</i>\n"
+            "<b>7</b> ➝ <i>just the 7th page</i>\n\n"
+            "<b>Note:</b> You can also use combinations by just using "
+            "<b>a comma and a space</b> like so:\n"
             "<b>3-5, 7</b> ➝ <i>pages 3, 4, 5 and 7</i>"
             )
 
@@ -223,23 +258,14 @@ async def extract_pages(message: types.Message, state: FSMContext):
     to extract. Extracts those pages from the PDF, saves it a a separate PDF
     and sends it back to the user.
     """
-    await state.finish()
-
     logging.info("Extracting pages started")
 
     await message.answer("I'm on it, please wait")
 
     files = listdir(f"{path}/input_pdfs/{message.chat.id}")
 
-    new_name = files[0].replace(" ", "_")
-
-    rename(
-        f"{path}/input_pdfs/{message.chat.id}/{files[0]}",
-        f"{path}/input_pdfs/{message.chat.id}/{new_name}"
-    )
-
-    input_file = f"{path}/input_pdfs/{message.chat.id}/{new_name}"
-    output_file = f"{path}/output_pdfs/{message.chat.id}/Split_{new_name}"
+    input_file = f"{path}/input_pdfs/{message.chat.id}/{files[0]}"
+    output_file = f"{path}/output_pdfs/{message.chat.id}/Split_{files[0]}"
 
     with open(input_file, "rb") as file:
         reader = PdfFileReader(file)
@@ -257,9 +283,11 @@ async def extract_pages(message: types.Message, state: FSMContext):
             await SplittingStates.waiting_for_pages.set()
             await message.reply(
                 "You typed in the wrong format. Try again.\n\n"
-                "<i><b>Examples:</b></i>\n"
+                "<i><b>Examples of Usage:</b></i>\n"
                 "<b>3-5</b> ➝ <i>pages 3, 4 and 5</i>\n"
-                "<b>7</b> ➝ <i>just the 7th page</i>\n"
+                "<b>7</b> ➝ <i>just the 7th page</i>\n\n"
+                "<b>Note:</b> You can also use combinations by just using "
+                "<b>a comma and a space</b> like so:\n"
                 "<b>3-5, 7</b> ➝ <i>pages 3, 4, 5 and 7</i>"
                 )
             return
@@ -317,11 +345,7 @@ async def extract_pages(message: types.Message, state: FSMContext):
                 await message.answer_chat_action(action="upload_document")
                 await message.reply_document(result, caption="Here you go")
 
-    unlink(input_file)
-    logging.info("Deleted input PDF (to be split)")
-
-    unlink(output_file)
-    logging.info("Deleted output PDF (split)")
+    await reset(message, state)
 
 
 @dp.message_handler(
@@ -343,6 +367,9 @@ async def en_de_file_received(message: types.Message, state: FSMContext):
     name = message.document.file_name
     if name.endswith(".pdf"):
         await message.answer("Downloading the file, please wait")
+
+        if " " in name:
+            name = name.replace(" ", "_")
 
         await bot.download_file_by_id(
             message.document.file_id,
@@ -368,18 +395,16 @@ async def encrypt_file(message: types.Message, state: FSMContext):
     This handler will be called when user types in a password for encryption.
     Encrypts the file with that password.
     """
-    await state.finish()
-
     logging.info("Encrypting started")
 
     await message.answer("Working on it, please wait")
 
     files = listdir(f"{path}/input_pdfs/{message.chat.id}")
 
-    new_name = files[0].replace(" ", "_")
-
-    if new_name.startswith("Decrypted_"):
-        new_name = "".join(new_name.split("Decrypted_")[1:])
+    if files[0].startswith("Decrypted_"):
+        new_name = "".join(files[0].split("Decrypted_")[1:])
+    else:
+        new_name = files[0]
 
     rename(
         f"{path}/input_pdfs/{message.chat.id}/{files[0]}",
@@ -406,11 +431,7 @@ async def encrypt_file(message: types.Message, state: FSMContext):
         await message.answer_chat_action(action="upload_document")
         await message.reply_document(result, caption="Here you go")
 
-    unlink(input_file)
-    logging.info("Deleted input PDF (to be encrypted)")
-
-    unlink(output_file)
-    logging.info("Deleted output PDF (encrypted)")
+    await reset(message, state)
 
 
 @dp.message_handler(state=CryptingStates.waiting_for_de_password)
@@ -419,18 +440,16 @@ async def decrypt_file(message: types.Message, state: FSMContext):
     This handler will be called when user types in a password for encryption.
     Encrypts the file with that password.
     """
-    await state.finish()
-
     logging.info("Decrypting started")
 
     await message.answer("Working on it, please wait")
 
     files = listdir(f"{path}/input_pdfs/{message.chat.id}")
 
-    new_name = files[0].replace(" ", "_")
-
-    if new_name.startswith("Encrypted_"):
-        new_name = "".join(new_name.split("Encrypted_")[1:])
+    if files[0].startswith("Encrypted_"):
+        new_name = "".join(files[0].split("Encrypted_")[1:])
+    else:
+        new_name = files[0]
 
     rename(
         f"{path}/input_pdfs/{message.chat.id}/{files[0]}",
@@ -474,11 +493,7 @@ async def decrypt_file(message: types.Message, state: FSMContext):
                 await message.answer_chat_action(action="upload_document")
                 await message.reply_document(result, caption="Here you go")
 
-            unlink(output_file)
-            logging.info("Deleted output PDF (decrypted)")
-
-            unlink(input_file)
-            logging.info("Deleted input PDF (to be decrypted)")
+            await reset(message, state)
         finally:
             file.close()
     else:
@@ -498,6 +513,9 @@ async def compress_file_received(message: types.Message):
     name = message.document.file_name
     if name.endswith(".pdf"):
         await message.answer("Downloading the file, please wait")
+
+        if " " in name:
+            name = name.replace(" ", "_")
 
         await bot.download_file_by_id(
             message.document.file_id,
@@ -545,16 +563,9 @@ async def compress_file(message: types.Message, state: FSMContext):
         # (didn't choose the default file name option)
         output_name = message.text
 
-    await state.finish()
-
     files = listdir(f"{path}/input_pdfs/{message.chat.id}")
 
-    new_name = files[0].replace(" ", "_")
-    rename(
-        f"{path}/input_pdfs/{message.chat.id}/{files[0]}",
-        f"{path}/input_pdfs/{message.chat.id}/{new_name}"
-    )
-    file = f"{path}/input_pdfs/{message.chat.id}/{new_name}"
+    file = f"{path}/input_pdfs/{message.chat.id}/{files[0]}"
 
     logging.info("Compressing started")
 
@@ -593,11 +604,7 @@ async def compress_file(message: types.Message, state: FSMContext):
         await message.reply_document(result, caption="Here you go")
         logging.info("Sent the compressed document")
 
-    unlink(file)
-    logging.info(f"Deleted input PDF (to be compressed)")
-
-    unlink(compressed_pdf)
-    logging.info(f"Deleted output PDF (compressed)")
+    await reset(message, state)
 
 
 @dp.message_handler(commands="done", state=MergingStates.waiting_for_files_to_merge)
@@ -645,6 +652,9 @@ async def handle_albums(message: types.Message, album: List[types.Message]):
     for obj in album:
         name = obj.document.file_name
 
+        if " " in name:
+            name = name.replace(" ", "_")
+
         if name[-4:].lower() != ".pdf":
             return await message.answer("That's not a PDF file.")
         
@@ -666,6 +676,7 @@ async def handle_albums(message: types.Message, album: List[types.Message]):
 
 
 @dp.message_handler(
+    is_media_group=False,
     content_types=types.message.ContentType.DOCUMENT,
     state=MergingStates.waiting_for_files_to_merge
     )
@@ -676,6 +687,10 @@ async def merge_file_received(message: types.Message):
     """
     name = message.document.file_name
     if name.endswith(".pdf"):
+
+        if " " in name:
+            name = name.replace(" ", "_")
+
         file_count = len(listdir(f'{path}/input_pdfs/{message.chat.id}')) + 1
 
         if file_count < 10:
@@ -714,6 +729,9 @@ async def specific_file_received(message: types.Message, state: FSMContext):
     if name.endswith(".pdf"):
         logging.info("Adding a file")
 
+        if " " in name:
+            name = name.replace(" ", "_")
+
         file_count = await state.get_data()
         file_count = file_count["num"]
 
@@ -739,8 +757,6 @@ async def specific_file_received(message: types.Message, state: FSMContext):
 
 @dp.message_handler(state=MergingStates.waiting_for_a_name)
 async def merge_files(message: types.Message, state: FSMContext):
-    await state.finish()
-
     await message.answer("Working on it")
 
     files = sorted(listdir(f"{path}/input_pdfs/{message.chat.id}"))
@@ -765,12 +781,117 @@ async def merge_files(message: types.Message, state: FSMContext):
         await message.reply_document(result, caption="Here you go")
         logging.info("Sent the document")
 
-    for file in files:
-        unlink(f"{path}/input_pdfs/{message.chat.id}/{file}")
-        logging.info(f"Deleted input PDF")
+    await reset(message, state)
 
-    unlink(f"{path}/output_pdfs/{message.chat.id}/{merged_pdf_name}")
-    logging.info(f"Deleted output PDF")
+
+@dp.message_handler(
+    is_media_group=True,
+    content_types=types.ContentType.DOCUMENT,
+    state=ConvertingStates.waiting_for_word_docs
+    )
+async def convert_word_album(
+    message: types.Message,
+    album: List[types.Message],
+    state: FSMContext
+    ):
+    """This handler will receive a complete album of any type. (Converting)"""
+    await message.answer("Downloading files, please wait")
+
+    for obj in album:
+        name = obj.document.file_name
+
+        if name[-4:].lower() != ".doc" and name[-5:].lower() != ".docx" and name[-4:].lower() != ".dot":
+            return await message.answer("I can only convert <i>.doc, .docx, .dot</i> formats.")
+
+        if " " in name:
+            name = name.replace(" ", "_")
+
+        await bot.download_file_by_id(
+            obj.document.file_id,
+            destination=f"{path}/input_pdfs/{message.chat.id}/{name}",
+            )
+        logging.info("File downloaded.")
+
+    await message.answer("Converting in progress, please wait")
+
+    script = (
+        "/Applications/LibreOffice.app/Contents/MacOS/soffice --headless "
+        f"--convert-to pdf --outdir {path}/output_pdfs/{message.chat.id}/"
+    )
+
+    media = types.MediaGroup()
+
+    input_path = f"{path}/input_pdfs/{message.chat.id}"
+    for doc in listdir(input_path):
+        convert_script = f"{script} {input_path}/{doc}"
+        convert_script.split(" ")
+        subprocess.run(convert_script, shell=True)
+
+    docs = listdir(f"{path}/output_pdfs/{message.chat.id}")
+
+    for index, file in enumerate(docs):
+        if index == len(docs) - 1:
+            media.attach_document(
+                types.InputFile(f"{path}/output_pdfs/{message.chat.id}/{file}"),
+                caption="Here you go"
+                )
+        else:
+            media.attach_document(types.InputFile(f"{path}/output_pdfs/{message.chat.id}/{file}"))
+
+    await message.answer_chat_action(action="upload_document")
+    await message.reply_media_group(media=media)
+
+    await reset(message, state)
+
+
+@dp.message_handler(
+    is_media_group=False,
+    content_types=types.message.ContentType.DOCUMENT,
+    state=ConvertingStates.waiting_for_word_docs
+    )
+async def convert_word_file(message: types.Message, state: FSMContext):
+    """
+    This handler will be called when user sends a file of type `Document`
+    (Converting)
+    """
+    await message.answer("Downloading file, please wait")
+
+    name = message.document.file_name
+
+    if name[-4:].lower() != ".doc" and name[-5:].lower() != ".docx" and name[-4:].lower() != ".dot":
+        return await message.answer("I can only convert <i>.doc, .docx, .dot</i> formats.")
+
+    if " " in name:
+        name = name.replace(" ", "_")
+
+    await bot.download_file_by_id(
+        message.document.file_id,
+        destination=f"{path}/input_pdfs/{message.chat.id}/{name}",
+        )
+
+    logging.info("File downloaded.")
+
+    await message.answer("Converting in progress, please wait")
+
+    input_path = f"{path}/input_pdfs/{message.chat.id}"
+
+    script = (
+        "/Applications/LibreOffice.app/Contents/MacOS/soffice --headless "
+        f"--convert-to pdf --outdir {path}/output_pdfs/{message.chat.id}/ "
+        f"{input_path}/{name}"
+    )
+
+    script.split(" ")
+    subprocess.run(script, shell=True)
+
+    output = listdir(f"{path}/output_pdfs/{message.chat.id}")[0]
+
+    with open(f"{path}/output_pdfs/{message.chat.id}/{output}", "rb") as output:
+        await message.answer_chat_action(action="upload_document")
+        await message.reply_document(output, caption="Here you go")
+        logging.info("Sent the document")
+
+    await reset(message, state)
 
 
 @dp.message_handler(
@@ -789,6 +910,11 @@ async def inform_limitations(message: types.Message):
         "I cannot handle multiple files at the same time.\n"
         "Please send a single file."
         )
+
+
+@dp.message_handler(regexp=("pdf"), state=None)
+async def vivy_torreto(message: types.Message):
+    await message.reply("https://ibb.co/9yCkBc1")
 
 
 @dp.message_handler(regexp=("sing"), state=None)

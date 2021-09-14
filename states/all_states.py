@@ -18,3 +18,7 @@ class CryptingStates(StatesGroup):
 class SplittingStates(StatesGroup):
     waiting_for_files_to_split = State()
     waiting_for_pages = State()
+
+class ConvertingStates(StatesGroup):
+    waiting_for_images = State()
+    waiting_for_word_docs = State()
