@@ -3,8 +3,8 @@ For dealing with files sent as an album.
 Source: https://github.com/WhiteMemory99/aiogram_album_handler/blob/master/example/album.py
 """
 
-from aiogram import types
 import asyncio
+from aiogram import types
 from typing import Union
 
 from aiogram.dispatcher.handler import CancelHandler

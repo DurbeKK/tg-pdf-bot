@@ -4,7 +4,7 @@ from PIL import Image
 from aiogram import types
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text
-from loader import dp, path, bot
+from loader import dp, input_path, output_path, bot
 
 from states.all_states import *
 
@@ -13,6 +13,8 @@ import logging
 from os import mkdir, listdir, unlink, rename
 from os.path import getsize
 import subprocess
+
+from utils.convert_file_size import convert_bytes
 
 operations_dict = {
     "merge": {
@@ -47,41 +49,35 @@ operations_dict = {
 }
 
 
-def convert_bytes(num):
-    """
-    This function will convert bytes to KB, MB.
-    """
-    for x in ['bytes', 'KB', 'MB']:
-        if num < 1024.0:
-            return f"{num:3.1f} {x}"
-        num /= 1024.0
-
-
 @dp.message_handler(commands="start", state="*")
-async def welcome_message(message: types.Message):
+async def welcome(message: types.Message):
     """
-    This handler will be called when user sends '/start' command
+    This handler will be called when user sends '/start' command.
+    Creates directories for new users where their files will be stored
+    temporarily until an operation is complete.
     """
-    try:
-        mkdir(f"{path}/input_pdfs/{message.chat.id}")
-        mkdir(f"{path}/output_pdfs/{message.chat.id}")
-    except FileExistsError:
+    if str(message.chat.id) in listdir(input_path):
         pass
     else:
+        mkdir(f"{input_path}/{message.chat.id}")
+        mkdir(f"{output_path}/{message.chat.id}")
         logging.info("Directories for new user created")
 
     await message.reply(
-        "Hello, I'm Vivy.\nMy mission is to make people happy by "
-        "helping them perform basic operations on their PDF files.\n\n"
+        "Hello, I'm Vivy.\n"
+        "My mission is to make people happy by helping them perform basic "
+        "operations on their PDF files.\n\n"
         "<b>What I can do</b>\n"
         "<i>/merge</i> - Merge multiple PDF files into one PDF file.\n"
         "<i>/compress</i> - Compress a PDF file (can only compress one "
         "file at a time).\n"
-        "<i>/encrypt</i> - Encrypt PDF file with PDF standard encryption handler.\n" 
+        "<i>/encrypt</i> - Encrypt PDF file with PDF standard encryption "
+        "handler.\n" 
         "<i>/decrypt</i> - Decrypt PDF file if it was encrypted with the "
         "PDF standard encryption handler.\n" 
         "<i>/split</i> - Split PDF (extract certain pages from your PDF, "
-        "saving those pages into a separate file).\n\n"
+        "saving those pages into a separate file).\n"
+        "<i>/convert</i> - Convert Word Documents/Images to PDF.\n\n"
         "Type /help for more information."
     )
 
@@ -90,6 +86,7 @@ async def welcome_message(message: types.Message):
 async def give_help(message: types.Message):
     """
     This handler will be called when user sends '/help' command
+    Provides some simple instructions on how to use the bot.
     """
     await message.reply(
         "<b>Instructions:</b>\nGo to the special commands <b>☰ Menu</b> "
@@ -100,34 +97,36 @@ async def give_help(message: types.Message):
         "<i>/merge</i> - Merge multiple PDF files into one PDF file.\n"
         "<i>/compress</i> - Compress a PDF file (can only compress one "
         "file at a time).\n"
-        "<i>/encrypt</i> - Encrypt PDF file with PDF standard encryption handler.\n"
+        "<i>/encrypt</i> - Encrypt PDF file with PDF standard encryption "
+        "handler.\n"
         "<i>/decrypt</i> - Decrypt PDF file if it was encrypted with the "
         "PDF standard encryption handler.\n"
         "<i>/split</i> - Split PDF (extract certain pages from your PDF, "
         "saving those pages into a separate file).\n"
+        "<i>/convert</i> - Convert Word Documents/Images to PDF.\n"
         "<i>/cancel</i> - Cancel the current operation.\n"
     )
 
 
 async def reset(message: types.Message, state: FSMContext):
     """
-    Resets that state and deletes all the files.
+    Cleans up user's directories and resets the state.
     """
     logging.info("Resetting the state and deleting all the files")
 
     await state.finish()
 
-    files = listdir(f'{path}/input_pdfs/{message.chat.id}')
+    files = listdir(f'{input_path}/{message.chat.id}')
 
     for file in files:
-        unlink(f"{path}/input_pdfs/{message.chat.id}/{file}")
-        logging.info(f"Deleted input PDF")
+        unlink(f"{input_path}/{message.chat.id}/{file}")
+        logging.info(f"Deleted input")
 
-    output_files = listdir(f'{path}/output_pdfs/{message.chat.id}')
+    output_files = listdir(f'{output_path}/{message.chat.id}')
 
     for file in output_files:
-        unlink(f"{path}/output_pdfs/{message.chat.id}/{file}")
-        logging.info(f"Deleted output PDF")
+        unlink(f"{output_path}/{message.chat.id}/{file}")
+        logging.info(f"Deleted output")
 
 
 @dp.message_handler(commands="cancel", state="*")
@@ -135,7 +134,8 @@ async def reset(message: types.Message, state: FSMContext):
 async def cancel(message: types.Message, state: FSMContext):
     """
     This handler will be called when user sends `/cancel` command.
-    Resets the state and deletes all the PDF files.
+    Triggers the reset function, which cleans up user input/output files and
+    resets the state.
     """
     logging.info("Cancelling operation")
 
@@ -220,7 +220,7 @@ async def extract_file_received(message: types.Message):
 
         await bot.download_file_by_id(
             message.document.file_id,
-            destination=f"{path}/input_pdfs/{message.chat.id}/{name}",
+            destination=f"{input_path}/{message.chat.id}/{name}",
             timeout=90,
             )
         logging.info(f"File (to be extracted) downloaded")
@@ -253,10 +253,10 @@ async def extract_pages(message: types.Message, state: FSMContext):
 
     await message.answer("I'm on it, please wait")
 
-    files = listdir(f"{path}/input_pdfs/{message.chat.id}")
+    files = listdir(f"{input_path}/{message.chat.id}")
 
-    input_file = f"{path}/input_pdfs/{message.chat.id}/{files[0]}"
-    output_file = f"{path}/output_pdfs/{message.chat.id}/Split_{files[0]}"
+    input_file = f"{input_path}/{message.chat.id}/{files[0]}"
+    output_file = f"{output_path}/{message.chat.id}/Split_{files[0]}"
 
     with open(input_file, "rb") as file:
         reader = PdfFileReader(file)
@@ -282,59 +282,58 @@ async def extract_pages(message: types.Message, state: FSMContext):
                 "<b>3-5, 7</b> ➝ <i>pages 3, 4, 5 and 7</i>"
                 )
             return
-        else:
 
-            for page in pages:
-                if type(page) == list:
-                    # user typed in a range
-                    start = page[0]
-                    end = page[1]
+        for page in pages:
+            if type(page) == list:
+                # user typed in a range
+                start = page[0]
+                end = page[1]
 
-                    # checking for invalid input
-                    if start > end:
-                        await SplittingStates.waiting_for_pages.set()
-                        await message.reply("Invalid pages indicated. Try again.")
-                        return
-                    elif start <= 0 or end <= 0:
-                        await SplittingStates.waiting_for_pages.set()
-                        await message.reply(
-                            "Only positive page numbers are allowed. Try again."
-                            )
-                        return
-                    elif start > page_count or end > page_count:
-                        await SplittingStates.waiting_for_pages.set()
-                        await message.reply(
-                            "Your PDF doesn't have that many pages. Try again."
-                            )
-                        return
+                # checking for invalid input
+                if start > end:
+                    await SplittingStates.waiting_for_pages.set()
+                    await message.reply("Invalid pages indicated. Try again.")
+                    return
+                elif start <= 0 or end <= 0:
+                    await SplittingStates.waiting_for_pages.set()
+                    await message.reply(
+                        "Only positive page numbers are allowed. Try again."
+                        )
+                    return
+                elif start > page_count or end > page_count:
+                    await SplittingStates.waiting_for_pages.set()
+                    await message.reply(
+                        "Your PDF doesn't have that many pages. Try again."
+                        )
+                    return
 
-                    for i in range(start-1, end):
-                        writer.addPage(reader.getPage(i))
-                else:
-                    # user typed in a number
+                for i in range(start-1, end):
+                    writer.addPage(reader.getPage(i))
+            else:
+                # user typed in a number
 
-                    # checking for invalid input
-                    if page <= 0:
-                        await SplittingStates.waiting_for_pages.set()
-                        await message.reply(
-                            "Only positive page numbers are allowed. Try again."
-                            )
-                        return
-                    elif page > page_count:
-                        await SplittingStates.waiting_for_pages.set()
-                        await message.reply(
-                            "Your PDF doesn't have that many pages. Try again."
-                            )
-                        return
+                # checking for invalid input
+                if page <= 0:
+                    await SplittingStates.waiting_for_pages.set()
+                    await message.reply(
+                        "Only positive page numbers are allowed. Try again."
+                        )
+                    return
+                elif page > page_count:
+                    await SplittingStates.waiting_for_pages.set()
+                    await message.reply(
+                        "Your PDF doesn't have that many pages. Try again."
+                        )
+                    return
 
-                    writer.addPage(reader.getPage(page-1))
+                writer.addPage(reader.getPage(page-1))
 
-            with open(output_file, 'wb') as result:
-                writer.write(result)
+        with open(output_file, 'wb') as result:
+            writer.write(result)
 
-            with open(output_file, 'rb') as result:
-                await message.answer_chat_action(action="upload_document")
-                await message.reply_document(result, caption="Here you go")
+        with open(output_file, 'rb') as result:
+            await message.answer_chat_action(action="upload_document")
+            await message.reply_document(result, caption="Here you go")
 
     await reset(message, state)
 
@@ -364,7 +363,7 @@ async def en_de_file_received(message: types.Message, state: FSMContext):
 
         await bot.download_file_by_id(
             message.document.file_id,
-            destination=f"{path}/input_pdfs/{message.chat.id}/{name}",
+            destination=f"{input_path}/{message.chat.id}/{name}",
             timeout=90,
             )
         logging.info(f"File (to be {action}ed) downloaded")
@@ -390,7 +389,7 @@ async def encrypt_file(message: types.Message, state: FSMContext):
 
     await message.answer("Working on it, please wait")
 
-    files = listdir(f"{path}/input_pdfs/{message.chat.id}")
+    files = listdir(f"{input_path}/{message.chat.id}")
 
     if files[0].startswith("Decrypted_"):
         new_name = "".join(files[0].split("Decrypted_")[1:])
@@ -398,12 +397,12 @@ async def encrypt_file(message: types.Message, state: FSMContext):
         new_name = files[0]
 
     rename(
-        f"{path}/input_pdfs/{message.chat.id}/{files[0]}",
-        f"{path}/input_pdfs/{message.chat.id}/{new_name}"
+        f"{input_path}/{message.chat.id}/{files[0]}",
+        f"{input_path}/{message.chat.id}/{new_name}"
     )
 
-    input_file = f"{path}/input_pdfs/{message.chat.id}/{new_name}"
-    output_file = f"{path}/output_pdfs/{message.chat.id}/Encrypted_{new_name}"
+    input_file = f"{input_path}/{message.chat.id}/{new_name}"
+    output_file = f"{output_path}/{message.chat.id}/Encrypted_{new_name}"
 
     file = open(input_file, "rb")
 
@@ -435,7 +434,7 @@ async def decrypt_file(message: types.Message, state: FSMContext):
 
     await message.answer("Working on it, please wait")
 
-    files = listdir(f"{path}/input_pdfs/{message.chat.id}")
+    files = listdir(f"{input_path}/{message.chat.id}")
 
     if files[0].startswith("Encrypted_"):
         new_name = "".join(files[0].split("Encrypted_")[1:])
@@ -443,12 +442,12 @@ async def decrypt_file(message: types.Message, state: FSMContext):
         new_name = files[0]
 
     rename(
-        f"{path}/input_pdfs/{message.chat.id}/{files[0]}",
-        f"{path}/input_pdfs/{message.chat.id}/{new_name}"
+        f"{input_path}/{message.chat.id}/{files[0]}",
+        f"{input_path}/{message.chat.id}/{new_name}"
     )
 
-    input_file = f"{path}/input_pdfs/{message.chat.id}/{new_name}"
-    output_file = f"{path}/output_pdfs/{message.chat.id}/Decrypted_{new_name}"
+    input_file = f"{input_path}/{message.chat.id}/{new_name}"
+    output_file = f"{output_path}/{message.chat.id}/Decrypted_{new_name}"
 
     file = open(input_file, "rb")
 
@@ -510,7 +509,7 @@ async def compress_file_received(message: types.Message):
 
         await bot.download_file_by_id(
             message.document.file_id,
-            destination=f"{path}/input_pdfs/{message.chat.id}/{name}",
+            destination=f"{input_path}/{message.chat.id}/{name}",
             timeout=90,
             )
         logging.info("File (to be compressed) downloaded")
@@ -554,9 +553,9 @@ async def compress_file(message: types.Message, state: FSMContext):
         # (didn't choose the default file name option)
         output_name = message.text
 
-    files = listdir(f"{path}/input_pdfs/{message.chat.id}")
+    files = listdir(f"{input_path}/{message.chat.id}")
 
-    file = f"{path}/input_pdfs/{message.chat.id}/{files[0]}"
+    file = f"{input_path}/{message.chat.id}/{files[0]}"
 
     logging.info("Compressing started")
 
@@ -568,9 +567,9 @@ async def compress_file(message: types.Message, state: FSMContext):
         compressed_name = output_name
 
     if message.text[-4:].lower() == ".pdf":
-        compressed_pdf = f"{path}/output_pdfs/{message.chat.id}/{compressed_name}"
+        compressed_pdf = f"{output_path}/{message.chat.id}/{compressed_name}"
     else:
-        compressed_pdf = f"{path}/output_pdfs/{message.chat.id}/{compressed_name}.pdf"
+        compressed_pdf = f"{output_path}/{message.chat.id}/{compressed_name}.pdf"
 
     script = (
         "gs -sDEVICE=pdfwrite -dNOPAUSE -dQUIET -dBATCH -dPDFSETTINGS=/screen"
@@ -606,7 +605,7 @@ async def get_confirmation(message: types.Message, state: FSMContext):
     """
     await state.finish()
 
-    files = sorted(listdir(f"{path}/input_pdfs/{message.chat.id}"))
+    files = sorted(listdir(f"{input_path}/{message.chat.id}"))
 
     if not files:
         await message.reply("You didn't send any PDF files.")
@@ -649,14 +648,14 @@ async def handle_albums(message: types.Message, album: List[types.Message]):
         if name[-4:].lower() != ".pdf":
             return await message.answer("That's not a PDF file.")
         
-        file_count = len(listdir(f'{path}/input_pdfs/{message.chat.id}')) + 1
+        file_count = len(listdir(f'{input_path}/{message.chat.id}')) + 1
 
         if file_count < 10:
             file_count = "0" + str(file_count)
 
         await bot.download_file_by_id(
             obj.document.file_id,
-            destination=f"{path}/input_pdfs/{message.chat.id}/{file_count}_{name}",
+            destination=f"{input_path}/{message.chat.id}/{file_count}_{name}",
             )
         logging.info("File downloaded.")
 
@@ -682,7 +681,7 @@ async def merge_file_received(message: types.Message):
         if " " in name:
             name = name.replace(" ", "_")
 
-        file_count = len(listdir(f'{path}/input_pdfs/{message.chat.id}')) + 1
+        file_count = len(listdir(f'{input_path}/{message.chat.id}')) + 1
 
         if file_count < 10:
             file_count = "0" + str(file_count)
@@ -691,7 +690,7 @@ async def merge_file_received(message: types.Message):
 
         await bot.download_file_by_id(
             message.document.file_id,
-            destination=f"{path}/input_pdfs/{message.chat.id}/{file_count}_{name}",
+            destination=f"{input_path}/{message.chat.id}/{file_count}_{name}",
             )
         logging.info("File downloaded")
  
@@ -733,7 +732,7 @@ async def specific_file_received(message: types.Message, state: FSMContext):
 
         await bot.download_file_by_id(
             message.document.file_id,
-            destination=f"{path}/input_pdfs/{message.chat.id}/{file_count}_{name}",
+            destination=f"{input_path}/{message.chat.id}/{file_count}_{name}",
             )
         logging.info("File downloaded")
 
@@ -750,24 +749,24 @@ async def specific_file_received(message: types.Message, state: FSMContext):
 async def merge_files(message: types.Message, state: FSMContext):
     await message.answer("Working on it")
 
-    files = sorted(listdir(f"{path}/input_pdfs/{message.chat.id}"))
+    files = sorted(listdir(f"{input_path}/{message.chat.id}"))
 
     logging.info("Merging started")
 
     merger = PdfFileMerger(strict=False)
 
     for file in files:
-        merger.append(f"{path}/input_pdfs/{message.chat.id}/{file}")
+        merger.append(f"{input_path}/{message.chat.id}/{file}")
 
     merged_pdf_name = message.text.replace(" ", "_")
 
     if message.text[-4:].lower() != ".pdf":
         merged_pdf_name = merged_pdf_name + ".pdf"
 
-    merger.write(f"{path}/output_pdfs/{message.chat.id}/{merged_pdf_name}")
+    merger.write(f"{output_path}/{message.chat.id}/{merged_pdf_name}")
     merger.close()
 
-    with open(f"{path}/output_pdfs/{message.chat.id}/{merged_pdf_name}", "rb") as result:
+    with open(f"{output_path}/{message.chat.id}/{merged_pdf_name}", "rb") as result:
         await message.answer_chat_action(action="upload_document")
         await message.reply_document(result, caption="Here you go")
         logging.info("Sent the document")
@@ -791,7 +790,7 @@ async def convert_word_album(
     for obj in album:
         name = obj.document.file_name
 
-        if name[-4:].lower() != ".doc" and name[-5:].lower() != ".docx" and name[-4:].lower() != ".dot":
+        if not name.endswith((".doc", ".docx", ".dot")):
             return await message.answer("I can only convert <i>.doc, .docx, .dot</i> formats.")
 
         if " " in name:
@@ -799,7 +798,7 @@ async def convert_word_album(
 
         await bot.download_file_by_id(
             obj.document.file_id,
-            destination=f"{path}/input_pdfs/{message.chat.id}/{name}",
+            destination=f"{input_path}/{message.chat.id}/{name}",
             )
         logging.info("File downloaded.")
 
@@ -807,27 +806,27 @@ async def convert_word_album(
 
     script = (
         "/Applications/LibreOffice.app/Contents/MacOS/soffice --headless "
-        f"--convert-to pdf --outdir {path}/output_pdfs/{message.chat.id}/"
+        f"--convert-to pdf --outdir {output_path}/{message.chat.id}/"
     )
 
     media = types.MediaGroup()
 
-    input_path = f"{path}/input_pdfs/{message.chat.id}"
-    for doc in listdir(input_path):
-        convert_script = f"{script} {input_path}/{doc}"
+    in_path = f"{input_path}/{message.chat.id}"
+    for doc in listdir(in_path):
+        convert_script = f"{script} {in_path}/{doc}"
         convert_script.split(" ")
         subprocess.run(convert_script, shell=True)
 
-    docs = listdir(f"{path}/output_pdfs/{message.chat.id}")
+    docs = listdir(f"{output_path}/{message.chat.id}")
 
     for index, file in enumerate(docs):
         if index == len(docs) - 1:
             media.attach_document(
-                types.InputFile(f"{path}/output_pdfs/{message.chat.id}/{file}"),
+                types.InputFile(f"{output_path}/{message.chat.id}/{file}"),
                 caption="Here you go"
                 )
         else:
-            media.attach_document(types.InputFile(f"{path}/output_pdfs/{message.chat.id}/{file}"))
+            media.attach_document(types.InputFile(f"{output_path}/{message.chat.id}/{file}"))
 
     await message.answer_chat_action(action="upload_document")
     await message.reply_media_group(media=media)
@@ -849,7 +848,6 @@ async def convert_word_file(message: types.Message, state: FSMContext):
 
     name = message.document.file_name
 
-    # if name[-4:].lower() != ".doc" and name[-5:].lower() != ".docx" and name[-4:].lower() != ".dot":
     if not name.endswith((".doc", ".docx", ".dot")):
         return await message.answer("I can only convert <i>.doc, .docx, .dot</i> formats.")
 
@@ -858,27 +856,27 @@ async def convert_word_file(message: types.Message, state: FSMContext):
 
     await bot.download_file_by_id(
         message.document.file_id,
-        destination=f"{path}/input_pdfs/{message.chat.id}/{name}",
+        destination=f"{input_path}/{message.chat.id}/{name}",
         )
 
     logging.info("File downloaded.")
 
     await message.answer("Converting in progress, please wait")
 
-    input_path = f"{path}/input_pdfs/{message.chat.id}"
+    in_path = f"{input_path}/{message.chat.id}"
 
     script = (
         "/Applications/LibreOffice.app/Contents/MacOS/soffice --headless "
-        f"--convert-to pdf --outdir {path}/output_pdfs/{message.chat.id}/ "
-        f"{input_path}/{name}"
+        f"--convert-to pdf --outdir {output_path}/{message.chat.id}/ "
+        f"{in_path}/{name}"
     )
 
     script.split(" ")
     subprocess.run(script, shell=True)
 
-    output = listdir(f"{path}/output_pdfs/{message.chat.id}")[0]
+    output = listdir(f"{output_path}/{message.chat.id}")[0]
 
-    with open(f"{path}/output_pdfs/{message.chat.id}/{output}", "rb") as output:
+    with open(f"{output_path}/{message.chat.id}/{output}", "rb") as output:
         await message.answer_chat_action(action="upload_document")
         await message.reply_document(output, caption="Here you go")
         logging.info("Sent the document")
@@ -901,11 +899,11 @@ async def name_pdf_img_album(message: types.Message, album: List[types.Message])
     for obj in album:
         file_id = obj.photo[-1].file_id
 
-        img_count = len(listdir(f"{path}/input_pdfs/{message.chat.id}"))
+        img_count = len(listdir(f"{input_path}/{message.chat.id}"))
 
         await bot.download_file_by_id(
             file_id,
-            destination=f"{path}/input_pdfs/{message.chat.id}/{img_count}.jpg",
+            destination=f"{input_path}/{message.chat.id}/{img_count}.jpg",
             )
         logging.info("Image downloaded.")
 
@@ -928,11 +926,11 @@ async def name_pdf_img(message: types.Message):
 
     file_id = message.photo[-1].file_id
 
-    img_count = len(listdir(f"{path}/input_pdfs/{message.chat.id}"))
+    img_count = len(listdir(f"{input_path}/{message.chat.id}"))
 
     await bot.download_file_by_id(
         file_id,
-        destination=f"{path}/input_pdfs/{message.chat.id}/{img_count}.jpg",
+        destination=f"{input_path}/{message.chat.id}/{img_count}.jpg",
         )
     logging.info("Image downloaded.")
 
@@ -959,11 +957,11 @@ async def name_pdf_img_album(message: types.Message, album: List[types.Message])
         if not name.endswith((".jpg", ".jpeg", ".png", ".gif", ".tif", ".tiff", ".eps", ".bmp")):
             return await message.answer("Sorry, I cannot convert from this image format.")
 
-        img_count = len(listdir(f"{path}/input_pdfs/{message.chat.id}"))
+        img_count = len(listdir(f"{input_path}/{message.chat.id}"))
 
         await bot.download_file_by_id(
             obj.document.file_id,
-            destination=f"{path}/input_pdfs/{message.chat.id}/{img_count}_{name}",
+            destination=f"{input_path}/{message.chat.id}/{img_count}_{name}",
             )
         logging.info("Image downloaded.")
 
@@ -989,11 +987,11 @@ async def name_pdf_img(message: types.Message):
     if not name.endswith((".jpg", ".jpeg", ".png", ".gif", ".tif", ".tiff", ".eps", ".bmp")):
         return await message.answer("Sorry, I cannot convert from this image format.")
 
-    img_count = len(listdir(f"{path}/input_pdfs/{message.chat.id}"))
+    img_count = len(listdir(f"{input_path}/{message.chat.id}"))
 
     await bot.download_file_by_id(
         message.document.file_id,
-        destination=f"{path}/input_pdfs/{message.chat.id}/{img_count}_{name}",
+        destination=f"{input_path}/{message.chat.id}/{img_count}_{name}",
         )
     logging.info("Image downloaded.")
 
@@ -1018,8 +1016,8 @@ async def convert_images(message: types.Message, state: FSMContext):
     if message.text[-4:].lower() != ".pdf":
         output_name = output_name + ".pdf"
 
-    output_path = f"{path}/output_pdfs/{message.chat.id}/{output_name}"
-    img_path = f"{path}/input_pdfs/{message.chat.id}"
+    out_path = f"{output_path}/{message.chat.id}/{output_name}"
+    img_path = f"{input_path}/{message.chat.id}"
 
     imgs = [img_path + "/" + name for name in sorted(listdir(img_path))]
 
@@ -1036,12 +1034,12 @@ async def convert_images(message: types.Message, state: FSMContext):
     logging.info("Converting images started")
     
     try:
-        with open(output_path, "wb") as result:
+        with open(out_path, "wb") as result:
             result.write(img2pdf.convert(imgs))
     except:
         return await message.reply("Sorry, the conversion failed.")
 
-    with open(output_path, "rb") as result:
+    with open(out_path, "rb") as result:
         await message.answer_chat_action(action="upload_document")
         await message.reply_document(result, caption="Here you go")
         logging.info("Sent the document")

@@ -3,7 +3,7 @@ from aiogram import types
 from aiogram.dispatcher import FSMContext
 
 from loader import dp, bot
-from loader import path
+from loader import input_path
 
 import logging
 from os import listdir, rename, unlink
@@ -95,7 +95,7 @@ async def choose_file(call: types.CallbackQuery):
     # this will be used to specify the callback_data for the buttons
     prefix = "mv_" if action == "move" else "rm_"
 
-    files = sorted(listdir(f"{path}/input_pdfs/{call.message.chat.id}"))
+    files = sorted(listdir(f"{input_path}/{call.message.chat.id}"))
 
     keyboard = types.InlineKeyboardMarkup()
     
@@ -119,7 +119,7 @@ async def choose_position(call: types.CallbackQuery):
     """
     This handler will be called once the user chooses the file to move.
     """
-    files_num = len(listdir(f"{path}/input_pdfs/{call.message.chat.id}"))
+    files_num = len(listdir(f"{input_path}/{call.message.chat.id}"))
 
     keyboard = types.InlineKeyboardMarkup()
 
@@ -137,8 +137,8 @@ async def choose_position(call: types.CallbackQuery):
     file_name = call.data[3:]
 
     rename(
-        f"{path}/input_pdfs/{call.message.chat.id}/{file_name}",
-        f"{path}/input_pdfs/{call.message.chat.id}/id_{file_name}"
+        f"{input_path}/{call.message.chat.id}/{file_name}",
+        f"{input_path}/{call.message.chat.id}/id_{file_name}"
         )
 
     await call.message.edit_text(
@@ -157,7 +157,7 @@ async def rearrange(call: types.CallbackQuery):
     """
     logging.info("Rearranging in progress")
 
-    files = sorted(listdir(f"{path}/input_pdfs/{call.message.chat.id}"))
+    files = sorted(listdir(f"{input_path}/{call.message.chat.id}"))
 
     for file in files:
         if file.startswith("id_"):
@@ -169,8 +169,8 @@ async def rearrange(call: types.CallbackQuery):
 
     if from_position == to_position:
         rename(
-            f"{path}/input_pdfs/{call.message.chat.id}/{chosen_file}",
-            f"{path}/input_pdfs/{call.message.chat.id}/{chosen_file[3:]}"
+            f"{input_path}/{call.message.chat.id}/{chosen_file}",
+            f"{input_path}/{call.message.chat.id}/{chosen_file[3:]}"
         )
 
         await call.message.answer(
@@ -183,14 +183,14 @@ async def rearrange(call: types.CallbackQuery):
 
             file_num = f"0{file_num}" if file_num < 10 else str(file_num)
             rename(
-                f"{path}/input_pdfs/{call.message.chat.id}/{file}",
-                f"{path}/input_pdfs/{call.message.chat.id}/{file_num}{file[2:]}"
+                f"{input_path}/{call.message.chat.id}/{file}",
+                f"{input_path}/{call.message.chat.id}/{file_num}{file[2:]}"
             )
 
         position = f"0{to_position}" if to_position < 10 else str(to_position)
         rename(
-            f"{path}/input_pdfs/{call.message.chat.id}/{chosen_file}",
-            f"{path}/input_pdfs/{call.message.chat.id}/{position}{chosen_file[5:]}"
+            f"{input_path}/{call.message.chat.id}/{chosen_file}",
+            f"{input_path}/{call.message.chat.id}/{position}{chosen_file[5:]}"
         )
     else:
         for file in files[from_position-1:to_position-1]:
@@ -198,17 +198,17 @@ async def rearrange(call: types.CallbackQuery):
 
             file_num = f"0{file_num}" if file_num < 10 else str(file_num)
             rename(
-                f"{path}/input_pdfs/{call.message.chat.id}/{file}",
-                f"{path}/input_pdfs/{call.message.chat.id}/{file_num}{file[2:]}"
+                f"{input_path}/{call.message.chat.id}/{file}",
+                f"{input_path}/{call.message.chat.id}/{file_num}{file[2:]}"
             )
 
         position = f"0{to_position}" if to_position < 10 else str(to_position)
         rename(
-            f"{path}/input_pdfs/{call.message.chat.id}/{chosen_file}",
-            f"{path}/input_pdfs/{call.message.chat.id}/{position}{chosen_file[5:]}"
+            f"{input_path}/{call.message.chat.id}/{chosen_file}",
+            f"{input_path}/{call.message.chat.id}/{position}{chosen_file[5:]}"
         )
 
-    files = sorted(listdir(f"{path}/input_pdfs/{call.message.chat.id}"))
+    files = sorted(listdir(f"{input_path}/{call.message.chat.id}"))
 
     file_list = [f"{index}. {value[3:]}" for index, value in enumerate(files, start=1)]
     file_list = "\n".join(file_list)
@@ -233,7 +233,7 @@ async def delete_file(call: types.CallbackQuery):
     """
     This handler will be called once user chooses the file they want to delete.
     """
-    files = sorted(listdir(f"{path}/input_pdfs/{call.message.chat.id}"))
+    files = sorted(listdir(f"{input_path}/{call.message.chat.id}"))
 
     if len(files) == 1:
         await call.message.answer(
@@ -242,7 +242,7 @@ async def delete_file(call: types.CallbackQuery):
     else:
         file_name = call.data[3:]
 
-        unlink(f"{path}/input_pdfs/{call.message.chat.id}/{file_name}")
+        unlink(f"{input_path}/{call.message.chat.id}/{file_name}")
         logging.info("Removed a specific PDF")
 
         del_file_num = int(file_name[:2])
@@ -253,11 +253,11 @@ async def delete_file(call: types.CallbackQuery):
 
                 file_num = f"0{file_num}" if file_num < 10 else str(file_num)
                 rename(
-                    f"{path}/input_pdfs/{call.message.chat.id}/{file}",
-                    f"{path}/input_pdfs/{call.message.chat.id}/{file_num}{file[2:]}"
+                    f"{input_path}/{call.message.chat.id}/{file}",
+                    f"{input_path}/{call.message.chat.id}/{file_num}{file[2:]}"
                 )
 
-    files = sorted(listdir(f"{path}/input_pdfs/{call.message.chat.id}"))
+    files = sorted(listdir(f"{input_path}/{call.message.chat.id}"))
 
     file_list = [f"{index}. {value[3:]}" for index, value in enumerate(files, start=1)]
     file_list = "\n".join(file_list)
@@ -285,7 +285,7 @@ async def ask_position(call: types.CallbackQuery):
     Asks the user where they want to add the new file.
     """
 
-    files_num = len(listdir(f"{path}/input_pdfs/{call.message.chat.id}"))
+    files_num = len(listdir(f"{input_path}/{call.message.chat.id}"))
 
     keyboard = types.InlineKeyboardMarkup()
 
@@ -319,7 +319,7 @@ async def prepare_for_addition(call: types.CallbackQuery, state: FSMContext):
 
     location = int(call.data[4:])
 
-    files = sorted(listdir(f"{path}/input_pdfs/{call.message.chat.id}"))
+    files = sorted(listdir(f"{input_path}/{call.message.chat.id}"))
 
     if location <= len(files):
         for file in files[location-1:]:
@@ -327,8 +327,8 @@ async def prepare_for_addition(call: types.CallbackQuery, state: FSMContext):
 
             file_num = f"0{file_num}" if file_num < 10 else str(file_num)
             rename(
-                f"{path}/input_pdfs/{call.message.chat.id}/{file}",
-                f"{path}/input_pdfs/{call.message.chat.id}/{file_num}{file[2:]}"
+                f"{input_path}/{call.message.chat.id}/{file}",
+                f"{input_path}/{call.message.chat.id}/{file_num}{file[2:]}"
             )
 
     await state.update_data(num=location)
@@ -355,11 +355,11 @@ async def just_cancel(call: types.CallbackQuery):
         reply_markup="",
         )
 
-    files = listdir(f'{path}/input_pdfs/{call.message.chat.id}/')
+    files = listdir(f'{input_path}/{call.message.chat.id}/')
 
     if files:
         for file in files:
-            unlink(f"{path}/input_pdfs/{call.message.chat.id}/{file}")
+            unlink(f"{input_path}/{call.message.chat.id}/{file}")
             logging.info(f"Deleted input PDF")
 
     await call.message.answer("Merging cancelled.")

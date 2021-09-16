@@ -8,6 +8,9 @@ from utils.set_bot_commands import set_default_commands
 
 
 async def on_startup(dispatcher):
+    """
+    Sets default commands for the bot and notifies the admin of bot startup.
+    """
     await set_default_commands(dispatcher)
     await notify_on_startup(dispatcher)
 
