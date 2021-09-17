@@ -1,3 +1,7 @@
+"""
+The part that has basic commands like start, help, cancel, etc.
+"""
+
 import logging
 from os import listdir, mkdir
 
