@@ -2,11 +2,12 @@
 This module contains only one function that will be used to delete user
 input/output files and reset the state prior to and after every operation.
 """
-from loader import input_path, output_path
+import logging
+from os import listdir, unlink
+
 from aiogram import types
 from aiogram.dispatcher import FSMContext
-from os import listdir, unlink
-import logging
+from loader import input_path, output_path
 
 
 async def reset(message: types.Message, state: FSMContext):

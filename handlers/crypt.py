@@ -2,14 +2,15 @@
 The part that deals with encryption and decryption of PDF files.
 """
 
-from PyPDF2 import PdfFileReader, PdfFileWriter
+import logging
+from os import listdir, rename
+
 from aiogram import types
 from aiogram.dispatcher import FSMContext
-from os import rename, listdir
-from states.all_states import CryptingStates
 from loader import bot, dp, input_path, output_path
+from PyPDF2 import PdfFileReader, PdfFileWriter
+from states.all_states import CryptingStates
 from utils.clean_up import reset
-import logging
 
 
 @dp.message_handler(

@@ -4,9 +4,9 @@ Source: https://github.com/WhiteMemory99/aiogram_album_handler/blob/master/examp
 """
 
 import asyncio
-from aiogram import types
 from typing import Union
 
+from aiogram import types
 from aiogram.dispatcher.handler import CancelHandler
 from aiogram.dispatcher.middlewares import BaseMiddleware
 

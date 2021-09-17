@@ -1,12 +1,11 @@
-from states.all_states import MergingStates, CompressingStates
-from aiogram import types
-from aiogram.dispatcher import FSMContext
-
-from loader import dp, bot
-from loader import input_path
-
 import logging
 from os import listdir, rename, unlink
+
+from aiogram import types
+from aiogram.dispatcher import FSMContext
+from loader import bot, dp, input_path
+from states.all_states import CompressingStates, MergingStates
+
 from handlers.commands import compress_file
 
 
