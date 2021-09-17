@@ -23,8 +23,7 @@ from utils.clean_up import reset
 )
 async def crypt_file_received(message: types.Message, state: FSMContext):
     """
-    This handler will be called when user sends a file of type `Document`
-    (Encrypting/Decrypting)
+    This handler will be called when user provides a file to encrypt/decrypt.
     Checks if the file is a PDF and asks to input a password.
     """
     # to make this function work for both encrypting and decrypting,
