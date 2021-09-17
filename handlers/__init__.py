@@ -1,1 +1,1 @@
-from . import commands, callbacks, crypt, compress, split
+from . import commands, crypt, compress, merge_callbacks, merge_commands, split

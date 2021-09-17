@@ -1,7 +1,6 @@
 import logging
 import subprocess
 from os import listdir, mkdir
-from os.path import getsize
 from typing import List
 
 import img2pdf
@@ -10,10 +9,8 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text
 from loader import bot, dp, input_path, output_path
 from PIL import Image
-from PyPDF2 import PdfFileMerger
 from states.all_states import *
 from utils.clean_up import reset
-from utils.convert_file_size import convert_bytes
 
 operations_dict = {
     "merge": {
@@ -39,7 +36,7 @@ operations_dict = {
     },
     "Word to PDF": {
         "state": ConvertingStates.waiting_for_word_docs,
-        "text": "Ok, send me the Word document you'd like to convert to a PDF"
+        "text": "Ok, send me the Word document(s) you'd like to convert to a PDF"
     },
     "Image(s) to PDF": {
         "state": ConvertingStates.waiting_for_images,
@@ -167,10 +164,10 @@ async def ask_which_convert(message: types.Message, state: FSMContext):
 
 
 @dp.message_handler(Text(equals=["Word to PDF", "Image(s) to PDF"]))
-async def start_word_conversion(message: types.Message):
+async def start_conversion(message: types.Message):
     """
-    This handler will be called when user chooses the Word to PDF conversion.
-    Asks to send a Word document.
+    This handler will be called when user chooses the type of conversion.
+    Asks to send a corresponding file(s).
     """
     await operations_dict[message.text]["state"].set()
 
@@ -178,183 +175,6 @@ async def start_word_conversion(message: types.Message):
         operations_dict[message.text]["text"],
         reply_markup=types.ReplyKeyboardRemove()
         )
-
-
-@dp.message_handler(commands="done", state=MergingStates.waiting_for_files_to_merge)
-async def get_confirmation(message: types.Message, state: FSMContext):
-    """
-    This handler will be called when user sends `/done` command.
-    Gets confirmation on the files that need to be merged.
-    """
-    await state.finish()
-
-    files = sorted(listdir(f"{input_path}/{message.chat.id}"))
-
-    if not files:
-        await message.reply("You didn't send any PDF files.")
-    elif len(files) == 1:
-        await message.reply(
-            "You sent only one file. What am I supposed to merge it with?"
-        )
-    else:
-        file_list = [f"{index}. {value[3:]}" for index, value in enumerate(files, start=1)] 
-        file_list = "\n".join(file_list)
-
-        keyboard = types.InlineKeyboardMarkup()
-        buttons = [
-            types.InlineKeyboardButton(text="Yes", callback_data="ask_for_name"),
-            types.InlineKeyboardButton(text="No", callback_data="modify_files"),
-        ]
-        keyboard.add(*buttons)
-
-        await message.reply(
-            f"<b><u>Are these the files that you want to merge?</u></b>\n\n{file_list}",
-            reply_markup=keyboard
-        )
-
-
-@dp.message_handler(
-    is_media_group=True,
-    content_types=types.ContentType.DOCUMENT,
-    state=MergingStates.waiting_for_files_to_merge
-    )
-async def handle_albums(message: types.Message, album: List[types.Message]):
-    """This handler will receive a complete album of any type. (Merging)"""
-    await message.answer("Downloading files, please wait")
-
-    for obj in album:
-        name = obj.document.file_name
-
-        if " " in name:
-            name = name.replace(" ", "_")
-
-        if name[-4:].lower() != ".pdf":
-            return await message.answer("That's not a PDF file.")
-        
-        file_count = len(listdir(f'{input_path}/{message.chat.id}')) + 1
-
-        if file_count < 10:
-            file_count = "0" + str(file_count)
-
-        await bot.download_file_by_id(
-            obj.document.file_id,
-            destination=f"{input_path}/{message.chat.id}/{file_count}_{name}",
-            )
-        logging.info("File downloaded.")
-
-    await message.answer(
-        "Great, if you have any more PDF files you want to merge, "
-        "send them now. Once you are done, send /done"
-    )
-
-
-@dp.message_handler(
-    is_media_group=False,
-    content_types=types.message.ContentType.DOCUMENT,
-    state=MergingStates.waiting_for_files_to_merge
-    )
-async def merge_file_received(message: types.Message):
-    """
-    This handler will be called when user sends a file of type `Document`
-    (Merging)
-    """
-    name = message.document.file_name
-    if name.endswith(".pdf"):
-
-        if " " in name:
-            name = name.replace(" ", "_")
-
-        file_count = len(listdir(f'{input_path}/{message.chat.id}')) + 1
-
-        if file_count < 10:
-            file_count = "0" + str(file_count)
-
-        await message.answer("Downloading the file, please wait")
-
-        await bot.download_file_by_id(
-            message.document.file_id,
-            destination=f"{input_path}/{message.chat.id}/{file_count}_{name}",
-            )
-        logging.info("File downloaded")
- 
-        await message.reply(
-            "Great, if you have any more PDF files you want to merge, "
-            "send them now. Once you are done, send /done"
-            )
-    else:
-        await message.reply(
-            "That's not a PDF file.",
-            )
-
-
-@dp.message_handler(
-    is_media_group=False,
-    content_types=types.message.ContentType.DOCUMENT,
-    state=MergingStates.waiting_for_specific_file
-    )
-async def specific_file_received(message: types.Message, state: FSMContext):
-    """
-    This handler will be called when user sends a file of type `Document`
-    that has to be added to a certain position in the list of files.
-    (Merging)
-    """
-    name = message.document.file_name
-    if name.endswith(".pdf"):
-        logging.info("Adding a file")
-
-        if " " in name:
-            name = name.replace(" ", "_")
-
-        file_count = await state.get_data()
-        file_count = file_count["num"]
-
-        if file_count < 10:
-            file_count = "0" + str(file_count)
-
-        await message.answer("Downloading the file, please wait")
-
-        await bot.download_file_by_id(
-            message.document.file_id,
-            destination=f"{input_path}/{message.chat.id}/{file_count}_{name}",
-            )
-        logging.info("File downloaded")
-
-        await state.finish()
- 
-        await get_confirmation(message, state)
-    else:
-        await message.reply(
-            "That's not a PDF file.",
-            )
-
-
-@dp.message_handler(state=MergingStates.waiting_for_a_name)
-async def merge_files(message: types.Message, state: FSMContext):
-    await message.answer("Working on it")
-
-    files = sorted(listdir(f"{input_path}/{message.chat.id}"))
-
-    logging.info("Merging started")
-
-    merger = PdfFileMerger(strict=False)
-
-    for file in files:
-        merger.append(f"{input_path}/{message.chat.id}/{file}")
-
-    merged_pdf_name = message.text.replace(" ", "_")
-
-    if message.text[-4:].lower() != ".pdf":
-        merged_pdf_name = merged_pdf_name + ".pdf"
-
-    merger.write(f"{output_path}/{message.chat.id}/{merged_pdf_name}")
-    merger.close()
-
-    with open(f"{output_path}/{message.chat.id}/{merged_pdf_name}", "rb") as result:
-        await message.answer_chat_action(action="upload_document")
-        await message.reply_document(result, caption="Here you go")
-        logging.info("Sent the document")
-
-    await reset(message, state)
 
 
 @dp.message_handler(
