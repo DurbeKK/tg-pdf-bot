@@ -1,0 +1,10 @@
+# virtualenv
+env
+
+# Git stuff
+.git
+.gitignore
+
+# Docker stuff
+Dockerfile
+.dockerignore
