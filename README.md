@@ -1,4 +1,4 @@
-![GitHub](https://img.shields.io/github/license/DurbeKK/tg_pdf_bot) [![Telegram](https://img.shields.io/badge/telegram-%40vivyTgBot-blue)](https://t.me/vivyTgBot)
+[![GitHub](https://img.shields.io/github/license/DurbeKK/tg_pdf_bot)](https://github.com/DurbeKK/tg_pdf_bot/blob/main/LICENSE) [![Telegram](https://img.shields.io/badge/telegram-%40vivyTgBot-blue)](https://t.me/vivyTgBot)
 
 # Telegram PDF Bot
 ## _Working with PDFs is now a bit easier!_
