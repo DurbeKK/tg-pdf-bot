@@ -1,10 +1,7 @@
-# virtualenv
+__pycache__
+README.md
 env
-
-# Git stuff
 .git
 .gitignore
-
-# Docker stuff
 Dockerfile
 .dockerignore
