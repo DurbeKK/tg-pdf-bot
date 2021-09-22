@@ -5,7 +5,7 @@ Update: creates directories for users if they don't exist already.
 (these directories will temporarily store users' input/output files)
 """
 import logging
-from os import listdir, unlink
+from os import listdir, unlink, mkdir
 
 from aiogram import types
 from aiogram.dispatcher import FSMContext
