@@ -1,0 +1,12 @@
+Basically all the files are managed like this:
+
+- The files are separated into two: input files and output files.
+- Input files are all the files sent by the user to the bot, that are temporarily 
+  stored until a certain operation is complete.
+- Output files are all the files temporarily stored until the bot sends the
+  files to the user.
+- Each user has his/her own directory in the user_files/input and
+  user_files/output directory.
+
+This is probably a very dumb way of doing it, when I figure out how to deal
+with this better, I'll change this around.
