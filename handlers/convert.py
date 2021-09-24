@@ -127,7 +127,7 @@ async def convert_word_file(message: types.Message, state: FSMContext):
 
     # LibreOffice is used to convert the Word documents to PDF
     script = (
-        "/Applications/LibreOffice.app/Contents/MacOS/soffice --headless "
+        "libreoffice --headless "
         f"--convert-to pdf --outdir {output_path}/{message.chat.id}/ "
         f"{in_path}/{name}"
     )
